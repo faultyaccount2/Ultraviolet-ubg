@@ -10,7 +10,8 @@ export default function handler(req, res) {
     const raw = req.query.url;
 
     if (!raw) {
-        return res.status(400).send("Missing url");
+        res.statusCode = 400;
+        return res.end("Missing url");
     }
 
     let target;
@@ -18,11 +19,13 @@ export default function handler(req, res) {
     try {
         target = new URL(raw);
     } catch {
-        return res.status(400).send("Invalid URL");
+        res.statusCode = 400;
+        return res.end("Invalid URL");
     }
 
     if (!["http:", "https:"].includes(target.protocol)) {
-        return res.status(400).send("Unsupported protocol");
+        res.statusCode = 400;
+        return res.end("Unsupported protocol");
     }
 
     proxy.web(
@@ -36,7 +39,8 @@ export default function handler(req, res) {
             console.error(error);
 
             if (!res.headersSent) {
-                res.status(502).send("Proxy error");
+                res.statusCode = 502;
+                res.end("Proxy error");
             }
         }
     );
