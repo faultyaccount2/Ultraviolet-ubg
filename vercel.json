@@ -1,6 +1,6 @@
 {
   "buildCommand": "echo 'Static site + API deployment'",
-  "outputDirectory": "site",
+  "outputDirectory": "public",
   "rewrites": [
     {
       "source": "/",
