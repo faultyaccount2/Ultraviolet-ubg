@@ -1,9 +1,10 @@
 {
   "buildCommand": "echo 'Static site + API deployment'",
+  "outputDirectory": "site",
   "rewrites": [
     {
       "source": "/",
-      "destination": "/site/index.html"
+      "destination": "/index.html"
     }
   ]
 }
