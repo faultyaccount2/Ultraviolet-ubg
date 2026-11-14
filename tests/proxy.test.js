@@ -94,8 +94,12 @@ test("mixed DNS answers are rejected and the socket lookup stays pinned", async 
   });
 });
 
-async function invoke(target, { method = "GET", body, type, origin, requestHeaders = {}, send = fixtureResponse, resolve = async () => [{ address: "93.184.216.34", family: 4 }], blocked = async () => false } = {}) {
+async function invoke(target, { method = "GET", body, lazyBody = false, type, origin, requestHeaders = {}, send = fixtureResponse, resolve = async () => [{ address: "93.184.216.34", family: 4 }], blocked = async () => false } = {}) {
   const req = { method, url: proxyUrl(target, { type, origin }), headers: requestHeaders, body };
+  if (lazyBody) {
+    Object.defineProperty(req, "body", { get() { throw new Error("Invalid JSON"); } });
+    req[Symbol.asyncIterator] = async function* () { yield body; };
+  }
   const res = { statusCode: 200, headers: {}, setHeader(name, value) { this.headers[name.toLowerCase()] = value; }, end(value) { this.body = value ? Buffer.from(value) : Buffer.alloc(0); } };
   await createProxyHandler({ send, resolve, blocked })(req, res);
   return res;
@@ -322,6 +326,25 @@ test("compressed JSON POST bodies retain their content encoding and raw bytes", 
   assert.equal(outgoing.headers["content-encoding"], "gzip");
   assert.deepEqual(outgoing.body, body);
   assert.equal(gunzipSync(outgoing.body).toString(), '{"search":"cats"}');
+});
+
+test("lazy platform JSON parsers are not invoked when forwarding raw request bytes", async () => {
+  for (const encoding of ["identity", "gzip"]) {
+    const raw = Buffer.from(' { "search": "piano music" } ');
+    const body = encoding === "gzip" ? gzipSync(raw) : raw;
+    let outgoing;
+    const result = await invoke("https://www.youtube.com/youtubei/v1/search", {
+      method: "POST", body, lazyBody: true,
+      requestHeaders: { "content-type": "application/json", "content-encoding": encoding },
+      send: (_url, options) => {
+        outgoing = options;
+        return { status: 200, headers: { "content-type": "application/json" }, body: Buffer.from("{}") };
+      },
+    });
+    assert.equal(result.statusCode, 200);
+    assert.equal(outgoing.headers["content-encoding"], encoding);
+    assert.deepEqual(outgoing.body, body);
+  }
 });
 
 test("XML POST bodies are forwarded unchanged for search APIs", async () => {

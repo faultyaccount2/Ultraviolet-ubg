@@ -6,6 +6,11 @@
   --text: #cdd6f4;
   --muted: #a6adc8;
   --accent: #b4befe;
+  --frame: #ffffff;
+  --toolbar: var(--background);
+  --tabs: var(--surface);
+  --status: var(--surface);
+  --border: var(--surface);
   --glass-opacity: 82%;
   --blur: 18px;
   --saturation: 130%;
@@ -27,9 +32,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:fo
 svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 [hidden] { display: none !important; }
 .browser { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
-.tab-bar { height: 40px; flex-shrink: 0; display: flex; align-items: center; border-bottom: 1px solid var(--surface); padding-right: 8px; }
+.tab-bar { height: 40px; flex-shrink: 0; display: flex; align-items: center; border-bottom: 1px solid var(--border); padding-right: 8px; }
 #tabs { display: flex; flex: 1; min-width: 0; height: 100%; overflow-x: auto; scrollbar-width: thin; }
-.tab { display: flex; align-items: center; gap: 8px; flex: 0 1 220px; min-width: 120px; padding: 0 10px; cursor: pointer; border-right: 1px solid var(--surface); font-size: 12px; }
+.tab { display: flex; align-items: center; gap: 8px; flex: 0 1 220px; min-width: 120px; padding: 0 10px; cursor: pointer; border-right: 1px solid var(--border); font-size: 12px; }
 .tab[aria-selected="true"] { background: var(--surface); }
 .tab:hover { background: var(--surface); }
 .tab img { width: 16px; height: 16px; border-radius: 3px; }
@@ -38,7 +43,7 @@ svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColo
 .tab .icon-button svg { width: 14px; height: 14px; }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0; padding: 6px; }
 .icon-button:not(:disabled):hover, .secondary-button:hover { background: var(--hover); }
-.toolbar { position: relative; z-index: 2; display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--surface); flex-shrink: 0; }
+.toolbar { position: relative; z-index: 2; display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .toolbar-inner { display: flex; gap: 4px; align-items: center; flex: 1; min-width: 0; max-width: 1000px; margin: 0 auto; }
 .address-form { display: flex; gap: 8px; align-items: center; background: var(--surface); padding: 8px 12px; border-radius: 6px; flex: 1; min-width: 0; margin: 0 4px; }
 .address-form svg { width: 17px; height: 17px; color: var(--muted); }
@@ -50,7 +55,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .menu button:hover { background: var(--surface); }
 .pages { flex: 1; min-height: 0; position: relative; z-index: 0; }
 .tab-page { height: 100%; overflow: auto; }
-.tab-page iframe { display: block; width: 100%; height: 100%; border: 0; background: white; }
+.tab-page iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--frame); }
 .home { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 40px 20px 70px; }
 .wordmark { display: flex; align-items: center; gap: 20px; }
 .wordmark h1 { font-size: clamp(38px, 7vw, 58px); font-weight: 600; letter-spacing: -2px; margin: 0; }
@@ -66,7 +71,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .shortcuts svg { width: 16px; height: 16px; }
 .home-note { color: var(--muted); text-align: center; font-size: 12px; }
 .text-button { padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.status-bar { display: flex; justify-content: space-between; gap: 10px; padding: 5px 12px; border-top: 1px solid var(--surface); font-size: 11px; color: var(--muted); }
+.status-bar { display: flex; justify-content: space-between; gap: 10px; padding: 5px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
 #page-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 dialog { background: var(--background); color: var(--text); border: 1px solid var(--hover); border-radius: 12px; width: min(520px, calc(100% - 32px)); max-height: 80dvh; padding: 22px; box-shadow: 0 20px 80px #0005; }
 dialog::backdrop { background: #0008; }
@@ -87,14 +92,17 @@ select, .field { background: var(--surface); border: 1px solid var(--hover); bor
 .skip-link { position: fixed; top: -100px; left: 12px; z-index: 30; background: var(--surface); color: var(--text); padding: 12px; }
 .skip-link:focus { top: 8px; }
 .noscript { position: fixed; bottom: 50px; width: 100%; text-align: center; }
-.tab-bar { background: color-mix(in srgb, var(--surface) 40%, transparent); backdrop-filter: blur(var(--blur)) saturate(var(--saturation)); }
-.toolbar { background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent); backdrop-filter: blur(var(--blur)) saturate(var(--saturation)); }
+.tab-bar { background: color-mix(in srgb, var(--tabs) 40%, transparent); backdrop-filter: blur(var(--blur)) saturate(var(--saturation)); }
+.toolbar { background: color-mix(in srgb, var(--toolbar) var(--glass-opacity), transparent); backdrop-filter: blur(var(--blur)) saturate(var(--saturation)); }
 .tab[aria-selected="true"] { background: color-mix(in srgb, var(--surface) var(--glass-opacity), transparent); box-shadow: inset 0 1px 0 #ffffff0c; border-radius: 6px 6px 0 0; }
 .tab.pinned { flex: 0 0 42px; min-width: 42px; justify-content: center; padding: 0 8px; }
 .tab.pinned .tab-title, .tab.pinned .icon-button { display: none; }
 .address-form { background: color-mix(in srgb, var(--surface) 70%, transparent); box-shadow: inset 0 1px 2px #0002; border: 1px solid color-mix(in srgb, var(--hover) 60%, transparent); border-radius: var(--radius); }
 dialog, .menu { background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent); backdrop-filter: blur(var(--blur)) saturate(var(--saturation)); border-radius: var(--radius); box-shadow: 0 8px 30px #0003; }
-.status-bar { background: color-mix(in srgb, var(--surface) 25%, transparent); }
+.status-bar { background: color-mix(in srgb, var(--status) 25%, transparent); }
+.color-controls { display: flex; align-items: center; gap: 8px; }
+.color-controls input[type="color"] { width: 40px; height: 36px; padding: 2px; border: 1px solid var(--hover); background: var(--surface); border-radius: 6px; cursor: pointer; }
+.color-controls .field { width: 100px; }
 .status-bar a { color: inherit; text-decoration: none; }
 .route-button { color: var(--muted); font-size: 11px; padding: 5px; border-radius: 4px; }
 .route-button:hover { background: var(--surface); }
@@ -109,12 +117,12 @@ textarea { font: inherit; background: var(--surface); color: var(--text); border
 .file-label input { max-width: 170px; font-size: 11px; }
 .table-scroll { overflow: auto; max-height: 45vh; }
 table { width: 100%; border-collapse: collapse; font-size: 11px; }
-td, th { padding: 8px; border-bottom: 1px solid var(--surface); text-align: left; }
+td, th { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; }
 td:first-child { max-width: 280px; overflow-wrap: anywhere; }
 .direct-page { text-align: center; }
 .direct-page h1 { font-size: 26px; font-weight: 500; }
 .direct-page .muted { max-width: 500px; line-height: 1.7; }
-#bookmarks-bar { display: flex; gap: 8px; padding: 4px 12px; overflow-x: auto; border-bottom: 1px solid var(--surface); font-size: 12px; }
+#bookmarks-bar { display: flex; gap: 8px; padding: 4px 12px; overflow-x: auto; border-bottom: 1px solid var(--border); font-size: 12px; }
 #bookmarks-bar button { flex-shrink: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legal-layout { padding: 32px 20px; }
 .legal-layout main { max-width: 720px; margin: 0 auto; line-height: 1.7; }

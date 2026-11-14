@@ -84,7 +84,10 @@
       <label class="setting">Restore tabs on startup<input id="restore-tabs" type="checkbox"></label>
       <label class="setting">Show bookmarks bar<input id="show-bookmarks" type="checkbox"></label>
       <label class="setting">Show status bar<input id="show-status" type="checkbox"></label>
-      <label class="setting">Accent<input id="accent" type="color" value="#b4befe"></label>
+      <h3>Colors</h3>
+      <div id="appearance-colors"></div>
+      <button id="reset-colors" class="secondary-button">Reset colors to theme</button>
+      <p class="muted">Choose a color or enter #RRGGBB. Changes are saved in this browser. Page frame color affects the frame background, not a website's own styling.</p>
       <label class="setting">Glass opacity<input id="glass-opacity" type="range" min="55" max="100" value="82"></label>
       <label class="setting">Blur<input id="glass-blur" type="range" min="0" max="40" value="18"></label>
       <label class="setting">Saturation<input id="glass-saturation" type="range" min="100" max="200" value="130"></label>
@@ -97,7 +100,7 @@
       <label class="setting">Request logging (optional)<input id="request-logging" type="checkbox"></label>
       <p class="muted">Logs only request metadata, never cookies, authorization headers or response bodies. At most 200 records per tab; native DIRECT requests cannot be inspected.</p>
       <p class="muted">Native privacy permissions, download folders, HTTP cache, third-party cookies/storage and direct-site uBlock filtering are controlled by your browser/extensions, not this page.</p>
-      <p class="muted">Settings and history are saved only in this browser. Proxied scripts get isolated in-memory cookies/storage and basic CacheStorage, never the app's data. Site caches are limited to 200 entries / 64 MB per context and disappear when it closes. Signed-in sessions and IndexedDB on proxied sites are not supported.</p>
+      <p class="muted">Settings and history are saved only in this browser. Proxy cookies persist in a separate per-site browser-local jar; HttpOnly values stay hidden from site scripts. Other site storage and basic CacheStorage remain isolated in memory, never exposing the app's data. Site caches are limited to 200 entries / 64 MB per context and disappear when it closes. Complex login flows and IndexedDB may not work.</p>
       <p class="muted">Shortcuts: Alt+T new tab, Alt+W close tab, Alt+L address bar, Alt+R reload, Alt+Left/Right navigation.</p>
     </dialog>
     <dialog id="routing-dialog" class="compact-dialog">

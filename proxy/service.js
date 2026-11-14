@@ -125,15 +125,17 @@ async function readBody(req) {
   const contentType = req.headers["content-type"] || "";
   const supported = /^(application\/(?:x-www-form-urlencoded|json(?:\+protobuf)?|xml)|text\/(?:plain|xml))(?:;|$)/i.test(contentType);
   const structured = /^application\/(?:x-www-form-urlencoded|json(?:\+protobuf)?)(?:;|$)/i.test(contentType);
+  // Vercel's lazy body getter parses compressed JSON before we can forward it.
+  const suppliedBody = Object.getOwnPropertyDescriptor(req, "body")?.value;
   let body;
-  if (Buffer.isBuffer(req.body)) body = req.body;
-  else if (typeof req.body === "string") body = Buffer.from(req.body);
-  else if (req.body && typeof req.body === "object") {
+  if (Buffer.isBuffer(suppliedBody)) body = suppliedBody;
+  else if (typeof suppliedBody === "string") body = Buffer.from(suppliedBody);
+  else if (suppliedBody && typeof suppliedBody === "object") {
     if (!structured) throw new ProxyError(415, "Only URL-encoded and JSON object bodies are supported. Multipart uploads are not supported.");
-    if (/^application\/json(?:\+protobuf)?(?:;|$)/i.test(contentType)) body = Buffer.from(JSON.stringify(req.body));
+    if (/^application\/json(?:\+protobuf)?(?:;|$)/i.test(contentType)) body = Buffer.from(JSON.stringify(suppliedBody));
     else {
       const fields = new URLSearchParams();
-      for (const [name, value] of Object.entries(req.body)) {
+      for (const [name, value] of Object.entries(suppliedBody)) {
         for (const item of Array.isArray(value) ? value : [value]) fields.append(name, String(item));
       }
       body = Buffer.from(fields.toString());

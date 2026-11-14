@@ -15,7 +15,7 @@ export function fixtureResponse(url, options) {
   const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" };
   let body;
   let status = 200;
-  if (["duckduckgo.com", "www.bing.com"].includes(url.hostname) && url.pathname === "/search") body = `<title>Search fixture</title><h1>Results for ${url.searchParams.get("q")}</h1>`;
+  if (["duckduckgo.com", "www.bing.com"].includes(url.hostname) && url.searchParams.has("q")) body = `<title>Search fixture</title><h1>Results for ${url.searchParams.get("q")}</h1>`;
   else if (url.pathname === "/") body = html;
   else if (url.pathname === "/redirect") { status = 302; headers.location = "/next?redirected=1"; body = ""; }
   else if (url.pathname === "/private-redirect") { status = 302; headers.location = "http://127.0.0.1/"; body = ""; }

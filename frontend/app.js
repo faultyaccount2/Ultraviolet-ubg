@@ -50,10 +50,16 @@ const engines = {
   bing: "https://www.bing.com/search?q=",
   google: "https://www.google.com/search?q=",
 };
+const colorLabels = {
+  background: "Background", surface: "Surface", hover: "Hover",
+  text: "Text", muted: "Muted text", frame: "Page frame",
+  toolbar: "Toolbar", tabs: "Tab bar", status: "Status bar", border: "Border",
+};
+const hexColor = /^#[a-f\d]{6}$/i;
 const defaults = {
-  theme: "mocha", engine: "bing", adblock: true, mode: "proxy",
+  theme: "mocha", engine: "duckduckgo", adblock: true, mode: "proxy",
   proxyDomains: [], restore: false, homepage: "", bookmarksBar: false, statusBar: true,
-  accent: "#b4befe", opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
+  accent: "#b4befe", colors: {}, opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
   textSize: 14, logging: false, cacheEnabled: false, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",
 };
 const settings = { ...defaults, ...readStore("bromine:settings", defaults,
@@ -61,6 +67,8 @@ const settings = { ...defaults, ...readStore("bromine:settings", defaults,
     (value.mode === undefined || ["automatic", "direct", "proxy"].includes(value.mode)) &&
     (value.proxyDomains === undefined || Array.isArray(value.proxyDomains) && value.proxyDomains.every((rule) => typeof rule === "string")) &&
     (value.accent === undefined || /^#[a-f\d]{6}$/i.test(value.accent)) &&
+    (value.colors === undefined || value.colors && !Array.isArray(value.colors) && typeof value.colors === "object" &&
+      Object.entries(value.colors).every(([key, color]) => Object.hasOwn(colorLabels, key) && typeof color === "string" && hexColor.test(color))) &&
     ["opacity", "blur", "saturation", "radius", "textSize", "concurrent", "cacheLimit"].every((key) => value[key] === undefined || Number.isFinite(value[key])) &&
     (value.homepage === undefined || typeof value.homepage === "string")) };
 const sites = readStore("bromine:sites", {}, (value) => value && !Array.isArray(value) && typeof value === "object" &&
@@ -76,6 +84,10 @@ function applyAppearance() {
     "--accent": settings.accent, "--glass-opacity": `${settings.opacity}%`, "--blur": `${settings.blur}px`,
     "--saturation": `${settings.saturation}%`, "--radius": `${settings.radius}px`, "--ui-size": `${settings.textSize}px`,
   })) document.documentElement.style.setProperty(name, value);
+  for (const key of Object.keys(colorLabels)) {
+    document.documentElement.style.removeProperty(`--${key}`);
+    if (settings.colors[key]) document.documentElement.style.setProperty(`--${key}`, settings.colors[key]);
+  }
   document.documentElement.dataset.density = settings.density;
   $("#bookmarks-bar").hidden = !settings.bookmarksBar;
   $(".status-bar").hidden = !settings.statusBar;
@@ -83,7 +95,57 @@ function applyAppearance() {
   $('link[rel="icon"]').href = favicon;
   if (settings.cloakTitle) document.title = settings.cloakTitle;
   if (parent !== window) parent.postMessage({ type: "bromine:appearance", title: settings.cloakTitle || document.title, favicon: new URL(favicon, location.href).href }, "*");
+  refreshColorInputs();
 }
+function refreshColorInputs() {
+  const style = getComputedStyle(document.documentElement);
+  for (const input of document.querySelectorAll("[data-color]")) {
+    input.value = input.dataset.color === "accent" ? settings.accent : style.getPropertyValue(`--${input.dataset.color}`).trim();
+  }
+}
+for (const [key, label] of Object.entries({ accent: "Accent", ...colorLabels })) {
+  const row = document.createElement("div");
+  row.className = "setting";
+  const title = document.createElement("label");
+  title.htmlFor = `color-${key}`;
+  title.textContent = label;
+  const controls = document.createElement("div");
+  controls.className = "color-controls";
+  for (const type of ["color", "text"]) {
+    const input = document.createElement("input");
+    input.type = type;
+    input.dataset.color = key;
+    input.id = `color-${key}${type === "text" ? "-hex" : ""}`;
+    input.setAttribute("aria-label", `${label} ${type === "text" ? "hex" : "color"}`);
+    if (type === "text") {
+      input.className = "field";
+      input.maxLength = 7;
+      input.pattern = "#[a-fA-F0-9]{6}";
+      input.spellcheck = false;
+    }
+    input.addEventListener(type === "color" ? "input" : "change", () => {
+      if (!hexColor.test(input.value)) {
+        notice("Enter a six-digit hex color, such as #1e1e2e.");
+        refreshColorInputs();
+        return;
+      }
+      if (key === "accent") settings.accent = input.value.toLowerCase();
+      else settings.colors[key] = input.value.toLowerCase();
+      applyAppearance();
+      writeStore("bromine:settings", settings);
+    });
+    controls.append(input);
+  }
+  row.append(title, controls);
+  $("#appearance-colors").append(row);
+}
+$("#reset-colors").addEventListener("click", () => {
+  settings.colors = {};
+  document.documentElement.style.removeProperty("--accent");
+  settings.accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  applyAppearance();
+  writeStore("bromine:settings", settings);
+});
 applyAppearance();
 matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyAppearance);
 $("#theme").value = settings.theme;
@@ -472,7 +534,7 @@ $("#theme").addEventListener("change", (event) => {
 });
 for (const [id, key, kind] of [
   ["routing-mode", "mode", "string"], ["restore-tabs", "restore", "boolean"], ["show-bookmarks", "bookmarksBar", "boolean"],
-  ["show-status", "statusBar", "boolean"], ["accent", "accent", "string"], ["glass-opacity", "opacity", "number"],
+  ["show-status", "statusBar", "boolean"], ["glass-opacity", "opacity", "number"],
   ["glass-blur", "blur", "number"], ["glass-saturation", "saturation", "number"], ["glass-radius", "radius", "number"],
   ["density", "density", "string"], ["text-size", "textSize", "number"], ["request-logging", "logging", "boolean"],
   ["cloak-title", "cloakTitle", "string"], ["cloak-icon", "cloakIcon", "string"],

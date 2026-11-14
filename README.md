@@ -24,6 +24,12 @@ The UI provides independent draggable/pinnable tabs, duplicate/reopen/session
 controls, navigation stacks, reload/stop/home, search, bookmarks with
 import/export, history filtering/clearing, downloads, a request inspector,
 glass appearance settings and fullscreen. Web pages stay inside the app.
+DuckDuckGo is the default search engine for new browser settings; select Bing
+or Google in Settings to change it. Existing saved engine choices are retained.
+Settings also provides saved color pickers and #RRGGBB inputs for the background,
+surfaces, hover, accent, text, page frame, toolbar, tab bar, status bar and borders.
+Reset colors restores the selected theme. Frame color does not recolor upstream
+website content.
 Proxy is the default; optional DIRECT mode is an iframe, not a native tab.
 Direct embedding can be refused by the destination. Cross-origin failures
 cannot be reliably classified, so no insecure timer-based fallback is used.
@@ -65,6 +71,8 @@ gzip/deflate/Brotli request encodings, XML API payloads and JSON bodies labeled
 request limit. Proxied resources use credentialed CORS to support the
 browser-local site cookie jar; application credentials are never forwarded to
 upstream sites.
+Raw request streams are read without invoking the deployment platform's lazy
+JSON parser, preserving compressed JSON API requests such as YouTube search.
 Same-site History API state changes keep the proxy URL and app address bar in
 sync without reloading the document. Blank sandboxed iframe history probes
 receive only the current document's History API; other frame access restrictions

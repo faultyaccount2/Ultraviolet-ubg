@@ -340,12 +340,51 @@ test("search uses the selected engine and correct encoded query", async ({ page 
   await setProxyMode(page);
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page.getByLabel("Search engine", { exact: true })).toHaveValue("bing");
+  await expect(page.getByLabel("Search engine", { exact: true })).toHaveValue("duckduckgo");
   await page.getByRole("button", { name: "Close settings" }).click();
   await page.getByRole("textbox", { name: "Search the web", exact: true }).fill("hello world");
   await page.getByRole("textbox", { name: "Search the web", exact: true }).press("Enter");
   await expect(page.frameLocator(".tab-page:not([hidden]) iframe").getByRole("heading", { name: "Results for hello world" })).toBeVisible();
-  await expect(page.locator("#address")).toHaveValue("https://www.bing.com/search?q=hello%20world");
+  await expect(page.locator("#address")).toHaveValue("https://duckduckgo.com/?q=hello%20world");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Search engine", { exact: true }).selectOption("bing");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.reload();
+  await openTarget(page, "another search");
+  await expect(page.locator("#address")).toHaveValue("https://www.bing.com/search?q=another%20search");
+  await expect(page.frameLocator(".tab-page:not([hidden]) iframe").getByRole("heading", { name: "Results for another search" })).toBeVisible();
+});
+
+test("color pickers and hex fields update the UI, persist, and reset to the theme", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Background hex", { exact: true }).fill("#123456");
+  await page.getByLabel("Background hex", { exact: true }).press("Tab");
+  await expect(page.getByLabel("Background color", { exact: true })).toHaveValue("#123456");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(18, 52, 86)");
+  await page.getByLabel("Page frame color", { exact: true }).fill("#abcdef");
+  await page.getByLabel("Page frame color", { exact: true }).dispatchEvent("input");
+  await expect(page.getByLabel("Page frame hex", { exact: true })).toHaveValue("#abcdef");
+  await page.getByLabel("Background hex", { exact: true }).fill("#zzzzzz");
+  await page.getByLabel("Background hex", { exact: true }).press("Tab");
+  await expect(page.getByRole("alert")).toContainText("six-digit hex color");
+  await expect(page.getByLabel("Background hex", { exact: true })).toHaveValue("#123456");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.reload();
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(18, 52, 86)");
+  if (!production) {
+    await openTarget(page, fixture);
+    await expect(page.locator(".tab-page:not([hidden]) iframe")).toHaveCSS("background-color", "rgb(171, 205, 239)");
+  }
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByLabel("Page frame hex", { exact: true })).toHaveValue("#abcdef");
+  await page.getByRole("button", { name: "Reset colors to theme" }).click();
+  await expect(page.getByLabel("Background hex", { exact: true })).toHaveValue("#1e1e2e");
+  await page.getByLabel("Theme", { exact: true }).selectOption("light");
+  await expect(page.getByLabel("Background hex", { exact: true })).toHaveValue("#eff1f5");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.reload();
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(239, 241, 245)");
 });
 
 test("Direct stays embedded without native tabs and per-site Proxy overrides persist separately", async ({ page, context }) => {
