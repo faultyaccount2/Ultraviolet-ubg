@@ -53,6 +53,10 @@ user submissions. CSS parsing recovers browser-tolerated syntax errors while
 still rewriting resource URLs.
 JavaScript source is not blindly rewritten; a frame bridge routes `fetch`
 and XHR requests and reports navigation to the browser UI.
+Empty POSTs need no content type. JSON bodies labeled `application/json+protobuf`
+are forwarded unchanged within the same 1 MB request limit. Proxied images use
+anonymous CORS so canvas drawing does not expose app credentials or fail solely
+because the document has an opaque origin.
 Same-site History API state changes keep the proxy URL and app address bar in
 sync without reloading the document. Blank sandboxed iframe history probes
 receive only the current document's History API; other frame access restrictions

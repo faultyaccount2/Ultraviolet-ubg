@@ -183,6 +183,20 @@ test("POST bodies and HEAD are preserved, with unsupported methods and compressi
   assert.equal(rejected.statusCode, 405);
   const multipart = await invoke("https://fixture.example/post", { method: "POST", body: "a", requestHeaders: { "content-type": "multipart/form-data" } });
   assert.equal(multipart.statusCode, 415);
+  let outgoing;
+  const empty = await invoke("https://fixture.example/post", {
+    method: "POST", body: "", send: (url, options) => { outgoing = options; return fixtureResponse(url, options); },
+  });
+  assert.equal(empty.statusCode, 200);
+  assert.equal(outgoing.headers["content-type"], undefined);
+  assert.equal(outgoing.headers["content-length"], "0");
+  const protobufJson = await invoke("https://fixture.example/post", {
+    method: "POST", body: "[1,2]", requestHeaders: { "content-type": "application/json+protobuf" },
+    send: (url, options) => { outgoing = options; return fixtureResponse(url, options); },
+  });
+  assert.equal(protobufJson.statusCode, 200);
+  assert.equal(outgoing.body.toString(), "[1,2]");
+  assert.equal(outgoing.headers["content-type"], "application/json+protobuf");
 });
 
 test("official uBlock core blocks an ad request and honors supplied domain exceptions", async () => {

@@ -138,6 +138,13 @@ test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST
   await expect.poll(() => frame.locator("#dynamic-image").evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect.poll(() => frame.locator("#dynamic-html img").evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(frame.locator("#script-status")).toHaveAttribute("data-xhr", "Fetch loaded: xhr");
+  expect(await frame.locator("#dynamic-image").evaluate(async (image) => {
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+    return context.getImageData(0, 0, 1, 1).data[1];
+  })).toBe(128);
   await expect(page.locator('iframe')).toHaveAttribute("sandbox", "allow-scripts allow-forms allow-downloads");
   const parentData = await frame.locator("body").evaluate(() => localStorage.getItem("bromine:settings"));
   expect(parentData).toBe(null);

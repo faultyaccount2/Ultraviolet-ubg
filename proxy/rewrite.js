@@ -124,6 +124,7 @@ export function rewriteHtml(source, target, requestUrl, adblock = true, extra = 
       if (item.name === "srcset" || item.name === "imagesrcset") item.value = rewriteSrcset(item.value, base, { ...options, type: "image" });
       if (item.name === "style") item.value = rewriteCss(item.value, base, options);
     }
+    if (node.tagName === "img") setAttr(node, "crossorigin", "anonymous");
     if (node.tagName === "style") {
       for (const child of node.childNodes) if (child.nodeName === "#text") child.value = rewriteCss(child.value, base, options);
     }

@@ -104,13 +104,17 @@ for (const name of ["pushState", "replaceState"]) {
 function attributeValue(element, name, value) {
   name = name.toLowerCase();
   const tag = element.tagName.toLowerCase();
+  if (tag === "img" && name === "crossorigin") return "anonymous";
   if (name === "style") return cssResources(value);
   if (["srcset", "imagesrcset"].includes(name) && !value.includes("data:")) return value.split(",").map((candidate) => {
     const [url, ...descriptor] = candidate.trim().split(/\s+/);
     return [resource(url, "image"), ...descriptor].join(" ");
   }).join(", ");
   const types = { img: "image", script: "script", link: "stylesheet", iframe: "subdocument", video: "media", audio: "media", source: "media", a: "document", area: "document" };
-  if (["src", "href", "poster", "background"].includes(name) && !value.trim().startsWith("#")) return resource(value, types[tag] || "other");
+  if (["src", "href", "poster", "background"].includes(name) && !value.trim().startsWith("#")) {
+    if (tag === "img") nativeSetAttribute.call(element, "crossorigin", "anonymous");
+    return resource(value, types[tag] || "other");
+  }
   return value;
 }
 Element.prototype.setAttribute = function (name, value) {
@@ -118,6 +122,7 @@ Element.prototype.setAttribute = function (name, value) {
 };
 for (const [constructor, property] of [
   [HTMLImageElement, "src"], [HTMLImageElement, "srcset"], [HTMLScriptElement, "src"],
+  [HTMLImageElement, "crossOrigin"],
   [HTMLLinkElement, "href"], [HTMLIFrameElement, "src"], [HTMLMediaElement, "src"],
   [HTMLSourceElement, "src"], [HTMLSourceElement, "srcset"], [HTMLAnchorElement, "href"],
 ]) {
