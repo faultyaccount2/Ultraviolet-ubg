@@ -120,7 +120,7 @@ test("the gateway sends the target path/query, strips application credentials an
   assert.equal(outgoing.url.search, "?hello=world");
   assert.equal(outgoing.options.headers.cookie, undefined);
   assert.equal(outgoing.options.headers.authorization, undefined);
-  assert.equal(outgoing.options.headers.origin, "https://fixture.example");
+  assert.equal(outgoing.options.headers.origin, undefined);
   assert.equal(result.statusCode, 200);
   assert.match(result.headers["content-security-policy"], /sandbox/);
   assert.match(result.headers["content-security-policy"], /frame-ancestors 'self'/);

@@ -125,8 +125,8 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
           "user-agent": req.headers["user-agent"] || "Mozilla/5.0 (compatible; BromineHTTPProxy/1.0)",
           "accept-language": req.headers["accept-language"] || "en-US,en;q=0.9",
           referer: new URL(origin).origin + "/",
-          origin: new URL(origin).origin,
         };
+        if (method !== "GET" || type === "xmlhttprequest") outgoingHeaders.origin = new URL(origin).origin;
         let forwardedHeaderBytes = 0;
         for (const [name, value] of Object.entries(req.headers)) {
           if (!forwardedHeaderNames.has(name) || typeof value !== "string") continue;
