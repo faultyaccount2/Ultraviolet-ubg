@@ -28,6 +28,16 @@ Proxy is the default; optional DIRECT mode is an iframe, not a native tab.
 Direct embedding can be refused by the destination. Cross-origin failures
 cannot be reliably classified, so no insecure timer-based fallback is used.
 Use Site Routing to select Proxy explicitly.
+For manual verification, open **Site Routing → Use DIRECT for manual
+verification**. This saves a DIRECT override for the entire hostname; it does
+not return to Proxy automatically. The browser retains native site sessions
+where its cookie/storage policies permit. Bromine cannot copy those sessions
+into Proxy, and its proxy cache controls do not clear native site cookies.
+CAPTCHA and Cloudflare checks can still refuse iframe embedding or require
+top-level access. DIRECT respects the destination's `X-Frame-Options` and CSP
+`frame-ancestors`; the app cannot override those headers on a native site.
+Neither challenge loading nor a fixture test proves successful
+live verification. No remote browser or automatic challenge solver is provided.
 Shortcuts use Alt+T/W/L/R and Alt+Left/Right to avoid taking over browser
 Ctrl/Cmd shortcuts. Icons and favicons are local SVGs; typography deliberately
 uses system fonts instead of the missing, obfuscated Switzer font.

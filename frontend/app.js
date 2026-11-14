@@ -268,7 +268,7 @@ function renderPage(tab) {
     });
     tab.frame = frame;
     tab.loading = true;
-    tab.status = direct ? "Direct embed · if blank, switch to Proxy; cross-origin failures cannot be inspected" : "HTTP(S) page";
+    tab.status = direct ? "DIRECT · native site session; embedding or verification may still be blocked" : "HTTP(S) page";
     tab.expectedUrl = entry(tab).url;
     tab.page.append(frame);
   }
@@ -319,6 +319,7 @@ function openDialog(name) {
     $("#site-route").value = site?.mode || settings.mode;
     $("#site-adblock").checked = site?.adblock ?? settings.adblock;
     $("#site-cache").checked = site?.cache ?? settings.cacheEnabled;
+    $("#verify-direct").disabled = !url;
   }
   if (name === "cache") refreshCache().catch((error) => notice(error.message));
   $(`#${name}-dialog`).showModal();
@@ -480,6 +481,11 @@ $("#apply-site").addEventListener("click", () => {
   }
   $("#routing-dialog").close();
   renderPage(current(), true);
+});
+$("#verify-direct").addEventListener("click", () => {
+  $("#site-route").value = "direct";
+  $("#apply-site").click();
+  notice("This site stays DIRECT for manual verification and login. Browser cookie restrictions still apply. Switching to Proxy does not transfer the session.");
 });
 $("#search-engine").addEventListener("change", (event) => {
   settings.engine = event.target.value;

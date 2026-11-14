@@ -107,6 +107,9 @@
       <label class="setting">Proxy network filtering<input id="site-adblock" type="checkbox"></label>
       <label class="setting">Proxy cache allowed<input id="site-cache" type="checkbox"></label>
       <button id="apply-site" class="secondary-button">Apply and reload</button>
+      <button id="verify-direct" class="secondary-button">Use DIRECT for manual verification</button>
+      <p class="muted">Manual verification uses the whole site in DIRECT, not just its CAPTCHA. The saved route stays DIRECT until you change it. The browser manages the site's cookies and login; they are not copied to Proxy or cleared by Bromine's cache controls. Switching to Proxy may lose verification and login.</p>
+      <p class="muted">CAPTCHA and Cloudflare checks are not guaranteed to work in an iframe. Sites may require a top-level browser tab or block third-party cookies. A loaded page is not proof that verification succeeded. No challenges are automatically solved or bypassed.</p>
       <p class="muted">Direct remains in an iframe, without rewriting. Sites may refuse embedding. Cross-origin errors cannot be classified reliably; use Proxy explicitly instead of guessing past a TLS, authentication or security failure.</p>
     </dialog>
     <dialog id="bookmarks-dialog">

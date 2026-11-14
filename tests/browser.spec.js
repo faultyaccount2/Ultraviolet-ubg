@@ -253,6 +253,36 @@ test("Direct stays embedded without native tabs and per-site Proxy overrides per
   await expect(page.locator("#route-button")).toHaveText("Proxy");
 });
 
+test("manual DIRECT route retains native fixture state without transferring it to Proxy", async ({ page, context }) => {
+  test.skip(production, "Tests session routing with a fixture, not a live CAPTCHA.");
+  await page.route("https://fixture.example/**", (route) => route.fulfill({
+    contentType: "text/html",
+    body: `<button onclick="localStorage.setItem('verification-fixture', 'complete'); this.textContent = 'Fixture complete'">Complete fixture step</button>
+      <p id="session"></p><script>document.querySelector('#session').textContent = localStorage.getItem('verification-fixture') || 'No fixture session';</script>`,
+  }));
+  await page.goto("/");
+  await openTarget(page, fixture);
+  await page.getByRole("button", { name: "Site routing" }).click();
+  await page.getByRole("button", { name: "Use DIRECT for manual verification" }).click();
+  const frame = page.frameLocator(".tab-page:not([hidden]) iframe");
+  await expect(page.locator("#route-button")).toHaveText("Direct");
+  await expect(page.locator(".tab-page:not([hidden]) iframe")).toHaveAttribute("sandbox", "allow-scripts allow-forms allow-downloads allow-same-origin");
+  await frame.getByRole("button", { name: "Complete fixture step" }).click();
+  await page.getByRole("button", { name: "New tab", exact: true }).click();
+  await page.getByRole("tab").first().click();
+  await expect(frame.getByRole("button", { name: "Fixture complete" })).toBeVisible();
+  expect(context.pages()).toHaveLength(1);
+  await page.reload();
+  await openTarget(page, fixture);
+  await expect(page.locator("#route-button")).toHaveText("Direct");
+  await expect(frame.locator("#session")).toHaveText("complete");
+  await page.getByRole("button", { name: "Site routing" }).click();
+  await page.getByLabel("Route", { exact: true }).selectOption("proxy");
+  await page.getByRole("button", { name: "Apply and reload", exact: true }).click();
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  expect(await frame.locator("body").evaluate(() => localStorage.getItem("verification-fixture"))).toBe(null);
+});
+
 test("live example.com loads through the real proxy with and without trailing slash", async ({ page }) => {
   await page.goto("/");
   for (const value of ["https://example.com", "https://example.com/"]) {
