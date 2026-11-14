@@ -5,6 +5,7 @@ import { compatibility } from "../shared/compatibility.js";
 import { configureCache, cacheCommand } from "./cache.js";
 import { Downloads } from "./downloads.js";
 import { connectWebSocket } from "./relay.js";
+import { cookieDomainMatches, decodeSiteCookie, encodeCookieState, encodeSiteCookie } from "../shared/cookie-jar.js";
 
 const $ = (selector) => document.querySelector(selector);
 const tabs = [];
@@ -111,6 +112,33 @@ function addRequest(tab, record) {
   tab.requests.unshift({ ...record, url: redactUrl(record.url) });
   tab.requests = tab.requests.slice(0, 200);
   if ($("#inspector-dialog").open) renderRequests();
+}
+
+function persistSiteCookie(tab, data) {
+  if (tab.route?.mode !== "proxy" || data.requestUrl !== tab.expectedUrl || typeof data.url !== "string") return;
+  try {
+    const page = validateNavigation(data.url);
+    const current = new URL(entry(tab).url || tab.expectedUrl);
+    const cookie = decodeSiteCookie(encodeSiteCookie(data.cookie));
+    if (!cookie || cookie.httpOnly ||
+        (cookie.hostOnly ? cookie.domain !== page.hostname : !cookieDomainMatches(page.hostname, cookie.domain)) ||
+        page.hostname !== current.hostname) throw new Error("The page attempted to save an out-of-scope cookie.");
+    const key = `${cookie.name}\n${cookie.domain}\n${cookie.path}\n${cookie.hostOnly ? "1" : "0"}`;
+    const frame = tab.frame;
+    tab.cookieSync = (tab.cookieSync || Promise.resolve()).then(async () => {
+      const response = await fetch(proxyUrl(page.href, { origin: page.origin, type: "cookie-sync" }), {
+        method: "POST",
+        headers: { "X-Bromine-Site-Cookies": encodeCookieState([cookie]) },
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error(`Cookie storage returned HTTP ${response.status}.`);
+      frame?.contentWindow?.postMessage({ type: "bromine:cookie-synced", key, requestUrl: data.requestUrl }, "*");
+    }).catch((error) => {
+      notice(`Site cookie changes could not be saved: ${error.message}`);
+    });
+  } catch (error) {
+    console.warn("Rejected proxied site cookie update:", error.message);
+  }
 }
 
 function resolveInput(value) {
@@ -509,7 +537,9 @@ window.addEventListener("message", (event) => {
   const tab = tabs.find((item) => item.frame?.contentWindow === event.source);
   const data = event.data;
   if (!tab || !data || typeof data !== "object") return;
-  if (data.type === "bromine:navigate" && typeof data.url === "string") {
+  if (data.type === "bromine:cookie") {
+    persistSiteCookie(tab, data);
+  } else if (data.type === "bromine:navigate" && typeof data.url === "string") {
     navigate(data.url, data.newTab ? createTab() : tab);
   } else if (data.type === "bromine:form" && typeof data.url === "string") {
     try {

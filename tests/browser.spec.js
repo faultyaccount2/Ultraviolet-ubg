@@ -188,6 +188,29 @@ test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST
   expect(errors).toEqual([]);
 });
 
+test("proxied site cookies persist locally and return only to their matching host", async ({ page }) => {
+  test.skip(production, "Cookie persistence uses deterministic local fixtures.");
+  await page.goto("/");
+  await setProxyMode(page);
+  const syncResponse = page.waitForResponse((response) =>
+    response.url().includes("type=cookie-sync") && response.status() === 204);
+  let frame = await openTarget(page, fixture);
+  await expect(frame.locator("#script-status")).toHaveText("Script loaded");
+  await syncResponse;
+  frame = await openTarget(page, "https://fixture.example/cookie-check");
+  await expect(frame.getByRole("heading", { name: "Cookie check", exact: true })).toBeVisible();
+  await expect(frame.locator("#stored-cookie")).toHaveText("fixture=1");
+  expect(await frame.locator("body").evaluate(() => document.cookie)).toBe("fixture=1");
+  const sentCookies = await frame.locator("body").evaluate(async () =>
+    await (await fetch("/cookie-echo")).text());
+  expect(sentCookies).toContain("fixture=1");
+  expect(sentCookies).toContain("fixture_http=secret");
+  expect(await frame.locator("body").evaluate(async () =>
+    await (await fetch("/cookie-echo", { credentials: "omit" })).text())).toBe("(none)");
+  frame = await openTarget(page, "https://www.bing.com/cookie-check");
+  await expect(frame.locator("#stored-cookie")).toHaveText("(none)");
+});
+
 test("isolated document caches retain responses without exposing or modifying app caches", async ({ page }) => {
   test.skip(production, "Deterministic storage fixture.");
   await page.goto("/");

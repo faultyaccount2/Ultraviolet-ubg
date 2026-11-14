@@ -1,6 +1,9 @@
 import { proxyUrl, unproxyUrl, resourceUrl } from "../shared/proxy-url.js";
 import { redactUrl } from "../shared/address.js";
 import { proxyRequest } from "../shared/proxy-request.js";
+import {
+  applySiteCookie, cookieDomainMatches, cookieMatches, decodeCookieState, documentCookie, encodeCookieState, normalizeSiteCookie,
+} from "../shared/cookie-jar.js";
 import valueParser from "postcss-value-parser";
 import { MemoryCache, MemoryCacheStorage } from "./memory-cache.js";
 
@@ -13,13 +16,53 @@ const adblock = script.dataset.adblock !== "0";
 const logging = script.dataset.logging === "1";
 const cache = script.dataset.cache !== "0";
 const proxyOrigin = new URL(location.href).origin;
+let cookies = decodeCookieState(script.dataset.cookieState || "");
+const pendingCookieChanges = [];
 const send = (data, transfer = []) => { if (parent !== window) parent.postMessage(data, "*", transfer); };
 
 function resource(value, type = "xmlhttprequest") {
-  return resourceUrl(value, base, proxyOrigin, { adblock, origin: target, type, logging, cache });
+  let url;
+  const pageContext = new URL(pageUrl);
+  pageContext.search = "";
+  pageContext.hash = "";
+  try { url = new URL(String(value), base); } catch { return resourceUrl(value, base, proxyOrigin, { adblock, origin: pageContext.href, type, logging, cache }); }
+  if (url.origin === proxyOrigin && url.pathname === "/api/proxy" && url.searchParams.has("url")) {
+    url.searchParams.set("origin", pageContext.href);
+    url.searchParams.set("type", type);
+    return url.href;
+  }
+  return resourceUrl(value, base, proxyOrigin, { adblock, origin: pageContext.href, type, logging, cache });
 }
 function originalUrl(value) {
   return unproxyUrl(resource(value), proxyOrigin);
+}
+function cookieIdentity(cookie) {
+  return `${cookie.name}\n${cookie.domain}\n${cookie.path}\n${cookie.hostOnly ? "1" : "0"}`;
+}
+function requestCookies(requestUrl) {
+  const host = new URL(pageUrl).hostname;
+  const request = new URL(requestUrl);
+  if (request.hostname !== host) return [];
+  const matches = cookies.filter((cookie) => !cookie.httpOnly && cookieMatches(cookie, request.href, host));
+  const identities = new Set(matches.map(cookieIdentity));
+  for (const cookie of pendingCookieChanges) {
+    if (cookieMatches(cookie, request.href, host) || cookie.expiresAt !== null && cookie.expiresAt <= Date.now()) {
+      if (!identities.has(cookieIdentity(cookie))) matches.push(cookie);
+    }
+  }
+  return matches;
+}
+function receiveCookieChanges(encoded) {
+  if (!encoded) return;
+  const host = new URL(pageUrl).hostname;
+  for (const cookie of decodeCookieState(encoded)) {
+    if (cookie.hostOnly ? cookie.domain !== host : !cookieDomainMatches(host, cookie.domain)) continue;
+    cookies = applySiteCookie(cookies, cookie);
+  }
+}
+function persistCookie(cookie) {
+  if (parent !== top || cookie.httpOnly) return;
+  send({ type: "bromine:cookie", requestUrl, url: pageUrl, cookie });
 }
 
 function memoryStorage() {
@@ -45,15 +88,24 @@ Object.defineProperties(window, {
   Cache: { configurable: true, value: MemoryCache },
   CacheStorage: { configurable: true, value: MemoryCacheStorage },
 });
-const cookies = new Map();
 Object.defineProperty(document, "cookie", {
   configurable: true,
-  get: () => [...cookies].map(([name, value]) => `${name}=${value}`).join("; "),
+  get: () => documentCookie(cookies, pageUrl),
   set: (raw) => {
-    const pair = String(raw).split(";")[0];
-    const split = pair.indexOf("=");
-    if (split > 0) cookies.set(pair.slice(0, split).trim(), pair.slice(split + 1));
+    const cookie = normalizeSiteCookie(String(raw), pageUrl, { allowHttpOnly: false });
+    if (!cookie) return;
+    const identity = cookieIdentity(cookie);
+    if (cookies.some((item) => item.httpOnly && cookieIdentity(item) === identity)) return;
+    cookies = applySiteCookie(cookies, cookie);
+    pendingCookieChanges.push(cookie);
+    persistCookie(cookie);
   },
+});
+if (parent === top) window.addEventListener("message", (event) => {
+  if (event.source !== parent || event.data?.type !== "bromine:cookie-synced" ||
+      event.data.requestUrl !== requestUrl || typeof event.data.key !== "string") return;
+  const index = pendingCookieChanges.findIndex((cookie) => cookieIdentity(cookie) === event.data.key);
+  if (index !== -1) pendingCookieChanges.splice(index, 1);
 });
 
 function cssResources(value) {
@@ -105,7 +157,11 @@ for (const name of ["pushState", "replaceState"]) {
 function attributeValue(element, name, value) {
   name = name.toLowerCase();
   const tag = element.tagName.toLowerCase();
-  if (tag === "img" && name === "crossorigin") return "anonymous";
+  if (["img", "script", "link", "audio", "video"].includes(tag) && name === "crossorigin") return "use-credentials";
+  if (["img", "script", "link", "audio", "video"].includes(tag) &&
+      ["src", "srcset", "imagesrcset", "href", "poster"].includes(name)) {
+    nativeSetAttribute.call(element, "crossorigin", "use-credentials");
+  }
   if (name === "style") return cssResources(value);
   if (["srcset", "imagesrcset"].includes(name) && !value.includes("data:")) return value.split(",").map((candidate) => {
     const [url, ...descriptor] = candidate.trim().split(/\s+/);
@@ -113,7 +169,7 @@ function attributeValue(element, name, value) {
   }).join(", ");
   const types = { img: "image", script: "script", link: "stylesheet", iframe: "subdocument", video: "media", audio: "media", source: "media", a: "document", area: "document" };
   if (["src", "href", "poster", "background"].includes(name) && !value.trim().startsWith("#")) {
-    if (tag === "img") nativeSetAttribute.call(element, "crossorigin", "anonymous");
+    if (["img", "script", "link", "audio", "video"].includes(tag)) nativeSetAttribute.call(element, "crossorigin", "use-credentials");
     return resource(value, types[tag] || "other");
   }
   return value;
@@ -123,7 +179,8 @@ Element.prototype.setAttribute = function (name, value) {
 };
 for (const [constructor, property] of [
   [HTMLImageElement, "src"], [HTMLImageElement, "srcset"], [HTMLScriptElement, "src"],
-  [HTMLImageElement, "crossOrigin"],
+  [HTMLImageElement, "crossOrigin"], [HTMLScriptElement, "crossOrigin"], [HTMLLinkElement, "crossOrigin"],
+  [HTMLMediaElement, "crossOrigin"],
   [HTMLLinkElement, "href"], [HTMLIFrameElement, "src"], [HTMLMediaElement, "src"],
   [HTMLSourceElement, "src"], [HTMLSourceElement, "srcset"], [HTMLAnchorElement, "href"],
 ]) {
@@ -156,15 +213,25 @@ for (const property of ["background", "backgroundImage", "listStyleImage", "cssT
 const insertRule = CSSStyleSheet.prototype.insertRule;
 CSSStyleSheet.prototype.insertRule = function (rule, index) { return insertRule.call(this, cssResources(String(rule)), index); };
 const NativeRequest = window.Request;
+const NativeHeaders = window.Headers;
 window.Request = class extends NativeRequest {
-  constructor(input, options) { super(typeof input === "string" || input instanceof URL ? resource(String(input)) : input, { ...options, mode: "cors", credentials: "omit" }); }
+  constructor(input, options) { super(typeof input === "string" || input instanceof URL ? resource(String(input)) : input, { ...options, mode: "cors" }); }
 };
 
 const nativeFetch = window.fetch.bind(window);
 window.fetch = async (input, options) => {
   const raw = input instanceof NativeRequest ? input.url : String(input);
+  const credentials = options?.credentials ?? (input instanceof NativeRequest ? input.credentials : "same-origin");
   const start = performance.now();
-  const response = await nativeFetch(await proxyRequest(input, options, resource, NativeRequest));
+  const request = await proxyRequest(input, options, resource, NativeRequest);
+  const headers = new NativeHeaders(request.headers);
+  const targetUrl = unproxyUrl(request.url, proxyOrigin);
+  const includeSiteCookies = credentials !== "omit" && new URL(targetUrl).hostname === new URL(pageUrl).hostname;
+  const siteCookies = includeSiteCookies ? requestCookies(targetUrl) : [];
+  if (includeSiteCookies) headers.set("X-Bromine-Site-Cookies", encodeCookieState(siteCookies));
+  else headers.delete("X-Bromine-Site-Cookies");
+  const response = await nativeFetch(request, { headers, credentials: "include" });
+  receiveCookieChanges(response.headers.get("X-Bromine-Cookie-Changes"));
   if (logging) send({ type: "bromine:request", url: redactUrl(originalUrl(raw)),
     method: options?.method || (input instanceof NativeRequest ? input.method : "GET"), status: response.status, resourceType: "xmlhttprequest",
     duration: performance.now() - start, size: Number(response.headers.get("content-length")) || null,
@@ -172,12 +239,26 @@ window.fetch = async (input, options) => {
   return response;
 };
 const nativeOpen = XMLHttpRequest.prototype.open;
+const xhrTargets = new WeakMap();
 XMLHttpRequest.prototype.open = function (method, url, ...args) {
-  return nativeOpen.call(this, method, resource(String(url)), ...args);
+  const proxied = resource(String(url));
+  xhrTargets.set(this, unproxyUrl(proxied, proxyOrigin));
+  return nativeOpen.call(this, method, proxied, ...args);
+};
+const nativeSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+  if (String(name).toLowerCase() === "x-bromine-site-cookies") return;
+  return nativeSetRequestHeader.call(this, name, value);
 };
 const nativeSend = XMLHttpRequest.prototype.send;
 XMLHttpRequest.prototype.send = function (body) {
-  if (this.withCredentials) this.withCredentials = false;
+  const targetUrl = xhrTargets.get(this);
+  if (targetUrl && new URL(targetUrl).hostname === new URL(pageUrl).hostname) {
+    const siteCookies = requestCookies(targetUrl);
+    nativeSetRequestHeader.call(this, "X-Bromine-Site-Cookies", encodeCookieState(siteCookies));
+    this.addEventListener("loadend", () => receiveCookieChanges(this.getResponseHeader("X-Bromine-Cookie-Changes")), { once: true });
+  }
+  this.withCredentials = true;
   return nativeSend.call(this, body);
 };
 const NativeWorker = window.Worker;
@@ -189,7 +270,7 @@ window.Worker = class ProxyWorker extends NativeWorker {
       return;
     }
     if (options.type === "module") throw new DOMException("Module workers are not supported by this proxy.", "NotSupportedError");
-    const config = { url, proxyOrigin, adblock, origin: target, logging, cache };
+    const config = { url, proxyOrigin, adblock, origin: target, logging, cache, cookies: cookies.filter((cookie) => !cookie.httpOnly) };
     const blob = new Blob([`self.BROMINE_WORKER_CONFIG=${JSON.stringify(config)};`, globalThis.BROMINE_WORKER_SOURCE], { type: "text/javascript" });
     const bootstrap = URL.createObjectURL(blob);
     try { super(bootstrap, options); }
@@ -325,7 +406,7 @@ function routeForm(form, submitter) {
     else send({ type: "bromine:navigate", url: url.href });
     return true;
   }
-  form.action = proxyOrigin + proxyUrl(url.href, { adblock, origin: target, type: "document", logging, cache });
+  form.action = proxyOrigin + proxyUrl(url.href, { adblock, origin: new URL(pageUrl).origin, type: "document", logging, cache });
   send({ type: "bromine:form", url: url.href });
   return false;
 }

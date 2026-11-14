@@ -21,6 +21,11 @@ export function fixtureResponse(url, options) {
   else if (url.pathname === "/private-redirect") { status = 302; headers.location = "http://127.0.0.1/"; body = ""; }
   else if (url.pathname === "/loop") { status = 302; headers.location = "/loop"; body = ""; }
   else if (url.pathname === "/next") body = `<title>Next page</title><h1>Next page</h1><p>${url.search}</p>`;
+  else if (url.pathname === "/cookie-check") {
+    headers["set-cookie"] = "fixture_http=secret; Path=/; HttpOnly; Secure";
+    body = `<title>Cookie check</title><h1>Cookie check</h1><p id="stored-cookie">${options.headers.cookie || "(none)"}</p>`;
+  }
+  else if (url.pathname === "/cookie-echo") { headers["content-type"] = "text/plain"; body = options.headers.cookie || "(none)"; }
   else if (url.pathname === "/nested") body = "<title>Nested fixture</title><h1>Nested fixture</h1>";
   else if (url.pathname === "/get") body = `<title>GET result</title><h1>GET result</h1><p>${url.searchParams.get("q")}</p>`;
   else if (url.pathname === "/file.txt") {

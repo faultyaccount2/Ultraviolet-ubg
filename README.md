@@ -33,6 +33,8 @@ verification**. This saves a DIRECT override for the entire hostname; it does
 not return to Proxy automatically. The browser retains native site sessions
 where its cookie/storage policies permit. Bromine cannot copy those sessions
 into Proxy, and its proxy cache controls do not clear native site cookies.
+Proxy keeps a browser-local cookie jar separately; cookies are not shared
+between DIRECT and Proxy.
 CAPTCHA and Cloudflare checks can still refuse iframe embedding or require
 top-level access. DIRECT respects the destination's `X-Frame-Options` and CSP
 `frame-ancestors`; the app cannot override those headers on a native site.
@@ -60,9 +62,9 @@ and XHR requests and reports navigation to the browser UI.
 Empty POSTs need no content type. `Request`-object fetch bodies are preserved;
 gzip/deflate/Brotli request encodings, XML API payloads and JSON bodies labeled
 `application/json+protobuf` are forwarded unchanged within the same 1 MB
-request limit. Proxied images use
-anonymous CORS so canvas drawing does not expose app credentials or fail solely
-because the document has an opaque origin.
+request limit. Proxied resources use credentialed CORS to support the
+browser-local site cookie jar; application credentials are never forwarded to
+upstream sites.
 Same-site History API state changes keep the proxy URL and app address bar in
 sync without reloading the document. Blank sandboxed iframe history probes
 receive only the current document's History API; other frame access restrictions
@@ -85,8 +87,12 @@ buffered-response limit. The function has a 300-second execution budget
 five redirects. HTML/CSS has a separate 64 MB processing budget because it
 must be parsed and rewritten. Large downloads still depend on upstream
 restrictions, execution time and the client's browser memory.
-Incoming application cookies and authorization
-headers are never forwarded. DNS answers are checked for non-public addresses
+Incoming application cookies and authorization headers are never forwarded.
+Proxy site cookies are stored in the browser as HttpOnly application cookies,
+scoped by site, and sent only to that same host on document navigations and
+credentialed same-host fetch/XHR. HttpOnly values are never exposed to page
+scripts. Cookie updates are processed transiently by the proxy and are not
+stored on its server. DNS answers are checked for non-public addresses
 at every redirect, then pinned to the actual socket while TLS verifies the
 original hostname. Private, loopback, link-local and reserved addresses are
 blocked, including alternate IPv4 representations and mapped IPv6.
@@ -98,9 +104,12 @@ Microsoft search client identifiers); application cookies, authorization and
 unknown custom headers are not forwarded. The upstream `Origin` is set to the
 proxied page's origin for normal cross-origin API semantics.
 
-Remote proxy documents have an opaque sandboxed origin. Their scripts get
-isolated in-memory cookie, localStorage and sessionStorage implementations;
-these neither reveal app storage nor propagate authenticated server sessions.
+Remote proxy documents have an opaque sandboxed origin. Their scripts get a
+cookie shim backed by the browser-local, per-site jar; it exposes only
+script-visible cookies for the current host and path. HttpOnly cookies remain
+unavailable to page scripts and are sent only on credentialed, same-host
+requests.
+localStorage and sessionStorage remain isolated in-memory implementations.
 They cannot read the app's localStorage, access its document or navigate the
 top window. IndexedDB and origin-sensitive APIs remain conditional.
 Document and classic-worker CacheStorage is an isolated, in-memory implementation
@@ -112,7 +121,8 @@ Nested proxy frames retain the opaque
 sandbox but omit the ancestor restriction that would reject an opaque parent.
 Dynamic DOM URLs, inserted HTML, styles, fetch, XHR and Request objects are
 rewritten at runtime; arbitrary JavaScript source is not regex-rewritten.
-The API is not an authentication bypass and cannot promise every site works.
+The API is not an authentication or challenge bypass and cannot promise every
+site works. Cookie support does not solve CAPTCHA or Cloudflare challenges.
 
 ## Cache, privacy and presentation
 
@@ -127,6 +137,8 @@ Request logging is disabled by default, transient and limited to 200
 metadata records per tab. Sensitive URL parameters are redacted from
 persisted history/bookmarks/session/download metadata. Neither request
 bodies, cookie values, credentials nor page contents are logged.
+Proxy site cookies are kept in browser storage and sent through the proxy only
+to their matching upstream host; they are not persisted by the proxy server.
 
 User-triggered about:blank wrapping and custom tab title/favicon affect
 presentation only. They do not conceal network traffic, server logs or

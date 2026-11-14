@@ -33,7 +33,7 @@ export async function proxyRequest(input, options, resource, RequestConstructor)
     const init = {
       ...options,
       mode: "cors",
-      credentials: "omit",
+      credentials: "include",
     };
     if (init.body instanceof ReadableStream) init.duplex = "half";
     return new RequestConstructor(resource(String(input)), init);
@@ -45,7 +45,7 @@ export async function proxyRequest(input, options, resource, RequestConstructor)
     method: options?.method ?? input.method,
     headers: options?.headers ?? input.headers,
     mode: "cors",
-    credentials: "omit",
+    credentials: "include",
     cache: options?.cache ?? input.cache,
     redirect: options?.redirect ?? input.redirect,
     referrer: options?.referrer ?? input.referrer,

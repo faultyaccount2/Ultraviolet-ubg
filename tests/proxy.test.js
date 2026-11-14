@@ -7,6 +7,9 @@ import { createProxyHandler } from "../proxy/service.js";
 import { isPublicAddress, pinnedLookup, resolvePublicTarget, validateTarget, requestResource } from "../proxy/network.js";
 import { rewriteCss, rewriteHtml } from "../proxy/rewrite.js";
 import { proxyUrl, unproxyUrl } from "../shared/proxy-url.js";
+import {
+  decodeCookieState, encodeCookieState, normalizeSiteCookie, siteCookieName,
+} from "../shared/cookie-jar.js";
 import { isBlocked } from "../proxy/filtering.js";
 import { fixtureResponse } from "./fixtures.js";
 import { MemoryCacheStorage } from "../frontend/memory-cache.js";
@@ -97,6 +100,142 @@ async function invoke(target, { method = "GET", body, type, origin, requestHeade
   await createProxyHandler({ send, resolve, blocked })(req, res);
   return res;
 }
+
+test("the proxy persists site cookies locally and scopes forwarding by request type and host", async () => {
+  const target = "https://fixture.example/";
+  const host = new URL(target).hostname;
+  const privateCookie = normalizeSiteCookie("private=secret; Path=/; Secure; HttpOnly", target);
+  const visibleCookie = normalizeSiteCookie("visible=browser; Path=/", target);
+  const forgedHttpOnly = normalizeSiteCookie("private=forged; Path=/; Secure", target);
+  const appCookie = `${siteCookieName(host, privateCookie)}=${encodeCookieState(privateCookie)}`;
+  let navigationHeaders;
+  const navigation = await invoke(target, {
+    type: "document",
+    requestHeaders: {
+      cookie: `${appCookie}; app-secret=must-not-forward`,
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "iframe",
+    },
+    send: (url, options) => {
+      navigationHeaders = options.headers;
+      const response = fixtureResponse(url, options);
+      response.headers["set-cookie"] = "visible=from-site; Path=/; Secure";
+      return response;
+    },
+  });
+  assert.equal(navigationHeaders.cookie, "private=secret");
+  assert.equal(navigationHeaders.authorization, undefined);
+  assert.match(navigation.headers["set-cookie"][0], /HttpOnly; SameSite=None; Secure/);
+  const bridge = elements(navigation.body.toString()).find((node) => node.tagName === "script" && attribute(node, "data-cookie-state") !== undefined);
+  const visibleState = decodeCookieState(attribute(bridge, "data-cookie-state"));
+  assert.deepEqual(visibleState.map((cookie) => cookie.name), ["visible"]);
+  assert.equal(visibleState[0].value, "from-site");
+
+  let apiHeaders;
+  const api = await invoke("https://fixture.example/data?value=api", {
+    type: "xmlhttprequest",
+    origin: "https://fixture.example/",
+    requestHeaders: { cookie: appCookie, origin: "null", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" },
+    send: (url, options) => {
+      apiHeaders = options.headers;
+      const response = fixtureResponse(url, options);
+      response.headers["set-cookie"] = "ignored=credentials-omitted; Path=/; Secure";
+      return response;
+    },
+  });
+  assert.equal(apiHeaders.cookie, undefined);
+  assert.equal(api.headers["set-cookie"], undefined);
+  assert.equal(api.headers["x-bromine-cookie-changes"], undefined);
+  assert.equal(api.headers["access-control-allow-origin"], "null");
+  assert.equal(api.headers["access-control-allow-credentials"], "true");
+
+  let explicitApiHeaders;
+  const explicitApi = await invoke("https://fixture.example/data?value=api", {
+    type: "xmlhttprequest",
+    origin: "https://fixture.example/",
+    requestHeaders: {
+      cookie: appCookie,
+      origin: "null",
+      "x-bromine-site-cookies": encodeCookieState([visibleCookie, forgedHttpOnly]),
+      "sec-fetch-mode": "cors",
+      "sec-fetch-dest": "empty",
+    },
+    send: (url, options) => {
+      explicitApiHeaders = options.headers;
+      const response = fixtureResponse(url, options);
+      response.headers["set-cookie"] = "fresh=2; Path=/; Secure";
+      return response;
+    },
+  });
+  assert.equal(explicitApiHeaders.cookie, "private=secret; visible=browser");
+  assert.doesNotMatch(explicitApiHeaders.cookie, /app-secret|forged/);
+  assert.deepEqual(decodeCookieState(explicitApi.headers["x-bromine-cookie-changes"]).map((cookie) => cookie.name), ["fresh"]);
+
+  const pathRestricted = await invoke("https://fixture.example/data?value=path", {
+    type: "xmlhttprequest",
+    origin: "https://fixture.example/",
+    requestHeaders: { origin: "null", "x-bromine-site-cookies": encodeCookieState([visibleCookie]) },
+    send: (url, options) => {
+      const response = fixtureResponse(url, options);
+      response.headers["set-cookie"] = "path_only=hidden; Path=/private; Secure";
+      return response;
+    },
+  });
+  assert.equal(pathRestricted.headers["x-bromine-cookie-changes"], undefined);
+  assert.equal(pathRestricted.headers["set-cookie"].length, 1);
+});
+
+test("cookie sync is limited to the browser application's same-origin request", async () => {
+  const target = "https://fixture.example/";
+  const cookie = normalizeSiteCookie("from-script=saved; Path=/", target);
+  const requestHeaders = {
+    origin: "https://app.example",
+    host: "app.example",
+    "x-forwarded-proto": "https",
+    "x-bromine-site-cookies": encodeCookieState([cookie]),
+  };
+  const saved = await invoke(target, { method: "POST", type: "cookie-sync", origin: "https://fixture.example", requestHeaders });
+  assert.equal(saved.statusCode, 204);
+  assert.match(saved.headers["set-cookie"][0], /HttpOnly; SameSite=None; Secure/);
+  const rejected = await invoke(target, {
+    method: "POST", type: "cookie-sync", origin: "https://fixture.example",
+    requestHeaders: { ...requestHeaders, origin: "null" },
+  });
+  assert.equal(rejected.statusCode, 403);
+});
+
+test("cookie domains on the public suffix list are rejected before reaching the site", async () => {
+  const target = "https://www.com/";
+  const cookie = normalizeSiteCookie("shared=value; Domain=com; Path=/", target);
+  let reachedSite = false;
+  const result = await invoke(target, {
+    type: "xmlhttprequest",
+    origin: "https://www.com/",
+    requestHeaders: { origin: "null", "x-bromine-site-cookies": encodeCookieState([cookie]) },
+    send: () => { reachedSite = true; return fixtureResponse(new URL(target), { headers: {} }); },
+  });
+  assert.equal(result.statusCode, 400);
+  assert.equal(reachedSite, false);
+});
+
+test("redirect cookie updates are forwarded only to the same host", async () => {
+  const target = "https://fixture.example/redirect";
+  let nextCookie;
+  const result = await invoke(target, {
+    type: "document",
+    requestHeaders: { "sec-fetch-mode": "navigate", "sec-fetch-dest": "iframe" },
+    send: (url, options) => {
+      if (url.pathname === "/redirect") return {
+        status: 302, headers: { location: "/next", "set-cookie": "redirected=yes; Path=/; Secure" }, body: Buffer.alloc(0),
+      };
+      nextCookie = options.headers.cookie;
+      return fixtureResponse(url, options);
+    },
+  });
+  assert.equal(nextCookie, "redirected=yes");
+  const redirected = normalizeSiteCookie("redirected=yes; Path=/; Secure", target);
+  assert.ok(result.headers["set-cookie"][0].startsWith(`${siteCookieName("fixture.example", redirected)}=`));
+});
 
 test("the gateway sends the target path/query, strips application credentials and isolates documents", async () => {
   let outgoing;
