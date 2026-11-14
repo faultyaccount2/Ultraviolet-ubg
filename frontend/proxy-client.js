@@ -1,10 +1,12 @@
-import { proxyUrl, unproxyUrl } from "../shared/proxy-url.js";
+import { proxyUrl, unproxyUrl, resourceUrl } from "../shared/proxy-url.js";
 import { redactUrl } from "../shared/address.js";
 import valueParser from "postcss-value-parser";
+import { MemoryCache, MemoryCacheStorage } from "./memory-cache.js";
 
 const script = document.currentScript;
 const target = script.dataset.target;
-const base = script.dataset.base || target;
+let base = script.dataset.base || target;
+let pageUrl = target;
 const requestUrl = script.dataset.request;
 const adblock = script.dataset.adblock !== "0";
 const logging = script.dataset.logging === "1";
@@ -13,16 +15,10 @@ const proxyOrigin = new URL(location.href).origin;
 const send = (data, transfer = []) => { if (parent !== window) parent.postMessage(data, "*", transfer); };
 
 function resource(value, type = "xmlhttprequest") {
-  if (String(value).startsWith("/api/proxy?url=")) return proxyOrigin + value;
-  const url = new URL(value, base);
-  if (url.origin === proxyOrigin && url.pathname === "/api/proxy") return url.href;
-  if (!["http:", "https:"].includes(url.protocol)) return url.href;
-  return proxyOrigin + proxyUrl(url.href, { adblock, origin: target, type, logging, cache });
+  return resourceUrl(value, base, proxyOrigin, { adblock, origin: target, type, logging, cache });
 }
 function originalUrl(value) {
-  if (String(value).startsWith("/api/proxy?url=")) return unproxyUrl(value, proxyOrigin);
-  const url = new URL(value, base);
-  return url.origin === proxyOrigin && url.pathname === "/api/proxy" ? unproxyUrl(url.href, proxyOrigin) : url.href;
+  return unproxyUrl(resource(value), proxyOrigin);
 }
 
 function memoryStorage() {
@@ -43,8 +39,11 @@ function memoryStorage() {
 }
 Object.defineProperty(window, "localStorage", { configurable: true, value: memoryStorage() });
 Object.defineProperty(window, "sessionStorage", { configurable: true, value: memoryStorage() });
-// CacheStorage's getter throws in opaque frames, even during optional feature checks.
-delete window.caches;
+Object.defineProperties(window, {
+  caches: { configurable: true, value: new MemoryCacheStorage() },
+  Cache: { configurable: true, value: MemoryCache },
+  CacheStorage: { configurable: true, value: MemoryCacheStorage },
+});
 const cookies = new Map();
 Object.defineProperty(document, "cookie", {
   configurable: true,
@@ -68,6 +67,40 @@ function cssResources(value) {
   return parsed.toString();
 }
 const nativeSetAttribute = Element.prototype.setAttribute;
+const contentWindow = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "contentWindow");
+const blankWindows = new WeakMap();
+Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
+  ...contentWindow,
+  get() {
+    const child = contentWindow.get.call(this);
+    if (!child || this.getAttribute("src") !== "about:blank") return child;
+    if (!blankWindows.has(child)) {
+      const frame = this;
+      blankWindows.set(child, new Proxy(Object.create(null), {
+        get(_object, name) {
+          // Sandbox descendants cannot lend native History methods; lend only our own.
+          if (name === "history" && frame.getAttribute("src") === "about:blank") return window.history;
+          const value = Reflect.get(child, name, child);
+          return typeof value === "function" ? value.bind(child) : value;
+        },
+      }));
+    }
+    return blankWindows.get(child);
+  },
+});
+for (const name of ["pushState", "replaceState"]) {
+  const native = History.prototype[name];
+  History.prototype[name] = function (state, unused, url) {
+    if (this !== window.history || url == null || url === "") return native.call(this, state, unused, url);
+    const destination = new URL(originalUrl(String(url)), pageUrl);
+    if (destination.origin !== new URL(pageUrl).origin) throw new DOMException("History cannot change the site's origin.", "SecurityError");
+    const result = native.call(this, state, unused, resource(destination.href, "document"));
+    if (base === pageUrl) base = destination.href;
+    pageUrl = destination.href;
+    send({ type: "bromine:history", requestUrl, url: pageUrl, replace: name === "replaceState" });
+    return result;
+  };
+}
 function attributeValue(element, name, value) {
   name = name.toLowerCase();
   const tag = element.tagName.toLowerCase();
@@ -141,6 +174,36 @@ const nativeSend = XMLHttpRequest.prototype.send;
 XMLHttpRequest.prototype.send = function (body) {
   if (this.withCredentials) this.withCredentials = false;
   return nativeSend.call(this, body);
+};
+const NativeWorker = window.Worker;
+window.Worker = class ProxyWorker extends NativeWorker {
+  constructor(value, options = {}) {
+    const url = originalUrl(String(value));
+    if (!/^https?:/.test(url)) {
+      super(value, options);
+      return;
+    }
+    if (options.type === "module") throw new DOMException("Module workers are not supported by this proxy.", "NotSupportedError");
+    const config = { url, proxyOrigin, adblock, origin: target, logging, cache };
+    const blob = new Blob([`self.BROMINE_WORKER_CONFIG=${JSON.stringify(config)};`, globalThis.BROMINE_WORKER_SOURCE], { type: "text/javascript" });
+    const bootstrap = URL.createObjectURL(blob);
+    try { super(bootstrap, options); }
+    catch (error) { URL.revokeObjectURL(bootstrap); throw error; }
+    this.bootstrap = bootstrap;
+    const ready = (event) => {
+      if (event.data?.type !== "bromine:worker-ready") return;
+      event.stopImmediatePropagation();
+      this.removeEventListener("message", ready, true);
+      this.release();
+    };
+    this.addEventListener("message", ready, true);
+    this.addEventListener("error", () => this.release(), { once: true });
+  }
+  release() {
+    if (this.bootstrap) URL.revokeObjectURL(this.bootstrap);
+    this.bootstrap = null;
+  }
+  terminate() { this.release(); return super.terminate(); }
 };
 const NativeWebSocket = window.WebSocket;
 window.WebSocket = class ProxyWebSocket extends EventTarget {
@@ -287,7 +350,7 @@ document.addEventListener("DOMContentLoaded", () => {
   send({
     type: "bromine:ready",
     requestUrl,
-    url: target,
+    url: pageUrl,
     title: document.title,
     favicon,
     error: document.querySelector("[data-proxy-error]")?.textContent,

@@ -4,6 +4,14 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { StaticNetFilteringEngine } from "@gorhill/ubo-core";
 
+const worker = await build({
+  entryPoints: ["frontend/proxy-worker.js"],
+  bundle: true,
+  format: "iife",
+  target: "es2022",
+  minify: true,
+  write: false,
+});
 await build({
   entryPoints: ["frontend/app.js", "frontend/proxy-client.js", "frontend/cache-worker.js", "frontend/legal.js"],
   bundle: true,
@@ -12,6 +20,7 @@ await build({
   outdir: "public",
   minify: true,
   logLevel: "info",
+  define: { "globalThis.BROMINE_WORKER_SOURCE": JSON.stringify(worker.outputFiles[0].text) },
 });
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 await writeFile("public/version.json", JSON.stringify({ commit }));

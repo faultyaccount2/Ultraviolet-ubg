@@ -53,6 +53,12 @@ user submissions. CSS parsing recovers browser-tolerated syntax errors while
 still rewriting resource URLs.
 JavaScript source is not blindly rewritten; a frame bridge routes `fetch`
 and XHR requests and reports navigation to the browser UI.
+Same-site History API state changes keep the proxy URL and app address bar in
+sync without reloading the document. Blank sandboxed iframe history probes
+receive only the current document's History API; other frame access restrictions
+remain in force. Classic dedicated workers use a local Blob bootstrap with
+proxied imports/fetch/XHR. Module workers and WebSockets inside workers are
+explicitly unsupported.
 
 Authenticated sessions, multipart uploads, relative JavaScript module
 imports, complex client routing, origin isolation requirements, DRM, anti-bot
@@ -80,9 +86,12 @@ isolated in-memory cookie, localStorage and sessionStorage implementations;
 these neither reveal app storage nor propagate authenticated server sessions.
 They cannot read the app's localStorage, access its document or navigate the
 top window. IndexedDB and origin-sensitive APIs remain conditional.
-CacheStorage is not exposed to proxied pages, so optional cache feature checks
-do not trigger its opaque-origin security error. This does not disable the
-app's separate public-resource cache. Nested proxy frames retain the opaque
+Document and classic-worker CacheStorage is an isolated, in-memory implementation
+of open/match/put/delete/keys and single-resource add, not persistent native
+storage or offline/service-worker support. Each context has a 200-entry/64 MB
+budget; quota errors are explicit. It never reads or modifies the app's separate
+public-resource cache, and cached site data disappears with the context.
+Nested proxy frames retain the opaque
 sandbox but omit the ancestor restriction that would reject an opaque parent.
 Dynamic DOM URLs, inserted HTML, styles, fetch, XHR and Request objects are
 rewritten at runtime; arbitrary JavaScript source is not regex-rewritten.

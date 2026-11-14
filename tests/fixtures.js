@@ -51,6 +51,9 @@ export function fixtureResponse(url, options) {
   else if (url.pathname === "/assets/app.js") {
     headers["content-type"] = "application/javascript";
     body = 'document.addEventListener("DOMContentLoaded",()=>{document.cookie="fixture=1";localStorage.setItem("fixture","isolated");document.getElementById("script-status").dataset.cache=("caches" in window&&window.caches)?"available":"unavailable";document.getElementById("script-status").textContent="Script loaded";fetch(new Request("/data?value=hello",{mode:"same-origin",credentials:"include",headers:{"X-SG-E":"fixture"}})).then(r=>r.text()).then(text=>document.getElementById("fetch-status").textContent=text);const xhr=new XMLHttpRequest();xhr.open("GET","/data?value=xhr");xhr.withCredentials=true;xhr.setRequestHeader("X-Fixture","1");xhr.onload=()=>{document.getElementById("script-status").dataset.xhr=xhr.responseText};xhr.send();const image=document.createElement("img");image.id="dynamic-image";image.src="/assets/image.svg?dynamic=1";document.body.append(image);const block=document.createElement("div");block.id="dynamic-html";block.innerHTML=\'<img src="/assets/image.svg?html=1" alt="Dynamic HTML">\';document.body.append(block);});';
+  } else if (url.pathname === "/assets/worker.js") {
+    headers["content-type"] = "application/javascript";
+    body = 'self.addEventListener("message",async()=>{const cache=await caches.open("worker-fixture");const response=await fetch(new Request("/data?value=worker",{credentials:"include"}));await cache.put("/data?value=worker",response);self.postMessage({text:await(await cache.match("/data?value=worker")).text(),isCache:cache instanceof Cache});});';
   } else if (url.pathname === "/data") { headers["content-type"] = "text/plain"; body = "Fetch loaded: " + url.searchParams.get("value"); }
   else if (["/assets/image.svg", "/assets/icon.svg"].includes(url.pathname)) {
     headers["content-type"] = "image/svg+xml";

@@ -25,3 +25,12 @@ export function unproxyUrl(value, base) {
   }
   return url.href;
 }
+
+export function resourceUrl(value, base, proxyOrigin, options = {}) {
+  if (String(value).startsWith("/api/proxy?url=")) return proxyOrigin + value;
+  let url = new URL(value, base);
+  if (url.origin === proxyOrigin && url.pathname === "/api/proxy") return url.href;
+  if (url.origin === proxyOrigin) url = new URL(url.pathname + url.search + url.hash, new URL(base).origin);
+  if (!["http:", "https:"].includes(url.protocol)) return url.href;
+  return proxyOrigin + proxyUrl(url.href, options);
+}

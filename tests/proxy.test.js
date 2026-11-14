@@ -9,6 +9,37 @@ import { rewriteCss, rewriteHtml } from "../proxy/rewrite.js";
 import { proxyUrl, unproxyUrl } from "../shared/proxy-url.js";
 import { isBlocked } from "../proxy/filtering.js";
 import { fixtureResponse } from "./fixtures.js";
+import { MemoryCacheStorage } from "../frontend/memory-cache.js";
+
+test("document caches snapshot consumed responses and honor Vary and query matching", async () => {
+  const storage = new MemoryCacheStorage();
+  const cache = await storage.open("test");
+  const request = new Request("https://fixture.example/data?q=1", { headers: { "accept-language": "en" } });
+  const response = new Response("snapshot", { headers: { vary: "accept-language" } });
+  const storing = cache.put(request, response);
+  await response.text();
+  await storing;
+  assert.equal(await (await cache.match(request)).text(), "snapshot");
+  assert.equal(await cache.match("https://fixture.example/data?q=1"), undefined);
+  assert.equal(await cache.match(new Request("https://fixture.example/data?q=2", { headers: { "accept-language": "en" } })), undefined);
+  assert.equal(await (await cache.match("https://fixture.example/data?q=2", { ignoreVary: true, ignoreSearch: true })).text(), "snapshot");
+  await assert.rejects(cache.put(request, new Response("partial", { status: 206 })), TypeError);
+  await assert.rejects(cache.put(request, new Response("wildcard", { headers: { vary: "*" } })), TypeError);
+});
+
+test("document caches enforce byte and entry quotas and release deleted entries", async () => {
+  const cache = await new MemoryCacheStorage().open("bytes");
+  await cache.put("https://fixture.example/full", new Response(new Uint8Array(64 * 1024 * 1024)));
+  await assert.rejects(cache.put("https://fixture.example/extra", new Response("x")), { name: "QuotaExceededError" });
+  await cache.delete("https://fixture.example/full");
+  await cache.put("https://fixture.example/extra", new Response("x"));
+  assert.equal(await (await cache.match("https://fixture.example/extra")).text(), "x");
+  const entries = await new MemoryCacheStorage().open("entries");
+  for (let index = 0; index < 200; index++) await entries.put(`https://fixture.example/${index}`, new Response(null));
+  await assert.rejects(entries.put("https://fixture.example/extra", new Response(null)), { name: "QuotaExceededError" });
+  await entries.delete("https://fixture.example/0");
+  await entries.put("https://fixture.example/extra", new Response(null));
+});
 
 function elements(source) {
   const all = [];

@@ -276,8 +276,7 @@ function renderPage(tab) {
   saveSession();
 }
 
-function recordNavigation(url, tab) {
-  const title = new URL(url).hostname;
+function recordNavigation(url, tab, title = new URL(url).hostname) {
   tab.stack.splice(tab.position + 1);
   tab.stack.push({ url, title });
   tab.position = tab.stack.length - 1;
@@ -521,6 +520,15 @@ window.addEventListener("message", (event) => {
       tab.title.textContent = entry(tab).title;
       if (selected === tab.id) updateToolbar();
     } catch (error) { notice(error.message); }
+  } else if (data.type === "bromine:history" && data.requestUrl === tab.expectedUrl && typeof data.url === "string") {
+    try {
+      const url = validateNavigation(data.url).href;
+      if (new URL(url).origin !== new URL(entry(tab).url).origin) throw new Error("Invalid history origin");
+      if (!data.replace) recordNavigation(url, tab, entry(tab).title);
+      else entry(tab).url = url;
+      if (selected === tab.id) updateToolbar();
+      saveSession();
+    } catch { notice("The page returned an invalid history update."); }
   } else if (data.type === "bromine:request" && settings.logging && typeof data.url === "string") {
     try {
       validateNavigation(data.url);

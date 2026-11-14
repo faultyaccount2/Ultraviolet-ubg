@@ -128,7 +128,7 @@ test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST
   await setProxyMode(page);
   let frame = await openTarget(page, fixture);
   await expect(frame.locator("#script-status")).toHaveText("Script loaded");
-  await expect(frame.locator("#script-status")).toHaveAttribute("data-cache", "unavailable");
+  await expect(frame.locator("#script-status")).toHaveAttribute("data-cache", "available");
   const nested = frame.frameLocator("#nested-frame");
   await expect(nested.getByRole("heading", { name: "Nested fixture", exact: true })).toBeVisible();
   expect(await nested.locator("body").evaluate(() => { try { return parent.document.title; } catch (error) { return error.name; } })).toBe("SecurityError");
@@ -179,6 +179,75 @@ test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST
   await expect(frame.getByRole("heading", { name: "POST result" })).toBeVisible();
   await expect(frame.getByText("name=Bromine", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("isolated document caches retain responses without exposing or modifying app caches", async ({ page }) => {
+  test.skip(production, "Deterministic storage fixture.");
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const cache = await caches.open("isolation-test");
+    await cache.put("https://fixture.example/data", new Response("app-only"));
+  });
+  const frame = await openTarget(page, fixture);
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  const result = await frame.locator("body").evaluate(async () => {
+    const cache = await caches.open("isolation-test");
+    const leaked = await cache.match("https://fixture.example/data");
+    await cache.put("https://fixture.example/data", new Response("page-only"));
+    const first = await (await cache.match("https://fixture.example/data")).text();
+    const second = await (await cache.match("https://fixture.example/data")).text();
+    await cache.put("https://fixture.example/data", new Response("replacement"));
+    const replacement = await (await caches.match("https://fixture.example/data")).text();
+    await caches.delete("isolation-test");
+    const named = await caches.match("https://fixture.example/data");
+    return { leaked: Boolean(leaked), first, second, replacement, named: Boolean(named), retained: await (await cache.match("https://fixture.example/data")).text(), isCache: cache instanceof Cache };
+  });
+  expect(result).toEqual({ leaked: false, first: "page-only", second: "page-only", replacement: "replacement", named: false, retained: "replacement", isCache: true });
+  expect(await page.evaluate(async () => (await (await caches.open("isolation-test")).match("https://fixture.example/data")).text())).toBe("app-only");
+  await page.getByRole("button", { name: "Reload", exact: true }).click();
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  expect(await frame.locator("body").evaluate(async () => Boolean(await caches.match("https://fixture.example/data")))).toBe(false);
+});
+
+test("isolated history routes SPA state and blank-frame history without allowing parent access", async ({ page }) => {
+  test.skip(production, "Deterministic history fixture.");
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  const result = await frame.locator("body").evaluate(() => {
+    const blank = document.createElement("iframe");
+    blank.src = "about:blank";
+    blank.sandbox = "allow-same-origin";
+    document.body.append(blank);
+    const replace = blank.contentWindow.history.replaceState;
+    replace.call(history, { phase: "replace" }, "", "https://fixture.example/next?state=1");
+    history.pushState({ phase: "push" }, "", "https://fixture.example/next?state=2");
+    let rejected;
+    try { history.pushState({}, "", "https://other.example/"); } catch (error) { rejected = error.name; }
+    let parentAccess;
+    try { parentAccess = parent.document.title; } catch (error) { parentAccess = error.name; }
+    return { state: history.state, rejected, parentAccess };
+  });
+  expect(result).toEqual({ state: { phase: "push" }, rejected: "SecurityError", parentAccess: "SecurityError" });
+  await expect(page.locator("#address")).toHaveValue("https://fixture.example/next?state=2");
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.locator("#address")).toHaveValue("https://fixture.example/next?state=1");
+});
+
+test("classic workers proxy fetch and cache responses without exposing bootstrap messages", async ({ page }) => {
+  test.skip(production, "Deterministic worker fixture.");
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  const response = await frame.locator("body").evaluate(() => new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("/assets/worker.js", location.origin));
+    const timer = setTimeout(() => { worker.terminate(); reject(new Error("Worker fixture timed out.")); }, 10000);
+    worker.onmessage = ({ data }) => { clearTimeout(timer); worker.terminate(); resolve(data); };
+    worker.onerror = (event) => { clearTimeout(timer); worker.terminate(); reject(new Error(event.message)); };
+    worker.postMessage("run");
+  }));
+  expect(response).toEqual({ text: "Fetch loaded: worker", isCache: true });
 });
 
 test("configured WebSocket relay forwards text through the real browser bridge", async ({ page }) => {

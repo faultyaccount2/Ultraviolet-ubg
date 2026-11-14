@@ -97,7 +97,7 @@
       <label class="setting">Request logging (optional)<input id="request-logging" type="checkbox"></label>
       <p class="muted">Logs only request metadata, never cookies, authorization headers or response bodies. At most 200 records per tab; native DIRECT requests cannot be inspected.</p>
       <p class="muted">Native privacy permissions, download folders, HTTP cache, third-party cookies/storage and direct-site uBlock filtering are controlled by your browser/extensions, not this page.</p>
-      <p class="muted">Settings and history are saved only in this browser. Proxied scripts get isolated in-memory cookies/storage, never the app's data. Signed-in sessions and IndexedDB on proxied sites are not supported.</p>
+      <p class="muted">Settings and history are saved only in this browser. Proxied scripts get isolated in-memory cookies/storage and basic CacheStorage, never the app's data. Site caches are limited to 200 entries / 64 MB per context and disappear when it closes. Signed-in sessions and IndexedDB on proxied sites are not supported.</p>
       <p class="muted">Shortcuts: Alt+T new tab, Alt+W close tab, Alt+L address bar, Alt+R reload, Alt+Left/Right navigation.</p>
     </dialog>
     <dialog id="routing-dialog" class="compact-dialog">
