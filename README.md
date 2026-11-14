@@ -182,6 +182,8 @@ closes sockets after 120 seconds and some real-time apps may reconnect or fail.
 ## Vercel deployment
 
 Vercel runs `pnpm run build`, serves `public/`, and deploys `api/proxy.js`.
+The function bundle explicitly includes the compiled filters and uBlock
+Origin's public-suffix data, which its runtime loads from disk.
 The optional Supabase relay is a separate deployment. No Wisp server, BareMux,
 Epoxy or VPS is required.
 Deploy through the connected GitHub integration **only after local tests

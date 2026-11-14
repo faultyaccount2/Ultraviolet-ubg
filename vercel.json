@@ -4,7 +4,7 @@
   "functions": {
     "api/proxy.js": {
       "maxDuration": 300,
-      "includeFiles": "filters/**"
+      "includeFiles": "{filters/**,node_modules/@gorhill/ubo-core/build/publicsuffixlist.json,node_modules/.pnpm/@gorhill+ubo-core@*/node_modules/@gorhill/ubo-core/build/publicsuffixlist.json}"
     }
   },
   "headers": [
