@@ -48,6 +48,7 @@
 		"meriyah": "^6.0.5",
 		"parse5": "^7.2.1",
 		"postcss": "^8.5.6",
+		"postcss-safe-parser": "^7.1.0",
 		"postcss-value-parser": "^4.2.0",
 		"set-cookie-parser": "^2.7.1"
 	}

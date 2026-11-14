@@ -246,22 +246,28 @@ window.open = (url) => {
   else send({ type: "bromine:navigate", url: destination, newTab: true });
   return null;
 };
-document.addEventListener("submit", (event) => {
-  const form = event.target;
-  const action = form.dataset.proxyAction;
-  if (!action || event.defaultPrevented) return;
-  const url = new URL(event.submitter?.getAttribute("formaction") || action, target);
-  const method = (event.submitter?.getAttribute("formmethod") || form.method).toLowerCase();
+function routeForm(form, submitter) {
+  const action = submitter?.hasAttribute("formaction") ? submitter.getAttribute("formaction") : form.getAttribute("action");
+  const url = new URL(originalUrl(action || target));
+  const method = (submitter?.hasAttribute("formmethod") ? submitter.formMethod : form.method).toLowerCase();
+  if (method === "dialog") return false;
   if (method === "get") {
-    event.preventDefault();
-    url.search = new URLSearchParams(new FormData(form, event.submitter)).toString();
+    url.search = new URLSearchParams(new FormData(form, submitter)).toString();
     if (parent === window) location.href = proxyOrigin + proxyUrl(url.href, { adblock, logging, cache });
     else send({ type: "bromine:navigate", url: url.href });
-  } else {
-    form.action = proxyOrigin + proxyUrl(url.href, { adblock, origin: target, type: "document", logging, cache });
-    send({ type: "bromine:form", url: url.href });
+    return true;
   }
+  form.action = proxyOrigin + proxyUrl(url.href, { adblock, origin: target, type: "document", logging, cache });
+  send({ type: "bromine:form", url: url.href });
+  return false;
+}
+document.addEventListener("submit", (event) => {
+  if (event.target instanceof HTMLFormElement && !event.defaultPrevented && routeForm(event.target, event.submitter)) event.preventDefault();
 });
+const nativeSubmit = HTMLFormElement.prototype.submit;
+HTMLFormElement.prototype.submit = function () {
+  if (!routeForm(this)) return nativeSubmit.call(this);
+};
 window.addEventListener("message", (event) => {
   if (event.source === parent && event.data?.type === "bromine:stop") window.stop();
 });

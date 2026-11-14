@@ -38,6 +38,9 @@ This is a **web proxy, not a VPN**. Public HTTP/HTTPS destinations on their
 standard ports are accepted. It handles GET, HEAD, basic POST bodies,
 validated redirects, HTML/CSS URLs, images, fonts, classic scripts, relative
 and absolute resources, query strings, fragments and ordinary forms.
+Programmatic `form.submit()` calls use the same original-target routing as
+user submissions. CSS parsing recovers browser-tolerated syntax errors while
+still rewriting resource URLs.
 JavaScript source is not blindly rewritten; a frame bridge routes `fetch`
 and XHR requests and reports navigation to the browser UI.
 
@@ -168,7 +171,8 @@ general-purpose open relay.
    rather than in its URL to reduce leakage into request logs.
 5. After setting the values, deploy the function. Gateway JWT verification is
    disabled because browser WebSockets cannot set an Authorization header; the
-   function validates the Supabase access token from the WebSocket subprotocol:
+   function validates the Supabase access token from the WebSocket subprotocol
+   and negotiates that offered subprotocol, as required by browser clients:
 
    ```sh
    pnpm exec supabase functions deploy --no-verify-jwt --remote=kbnufghpqcvetpjbcszu ws-relay

@@ -155,11 +155,69 @@ test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST
   await expect(frame.getByRole("heading", { name: "GET result" })).toBeVisible();
   await expect(frame.getByText("hello world", { exact: true })).toBeVisible();
   frame = await openTarget(page, fixture);
+  await frame.locator('form[method="get"]').evaluate((form) => form.submit());
+  await expect(frame.getByRole("heading", { name: "GET result" })).toBeVisible();
+  await expect(frame.getByText("hello world", { exact: true })).toBeVisible();
+  frame = await openTarget(page, fixture);
+  await frame.locator("body").evaluate((body) => {
+    const form = document.createElement("form");
+    form.action = "/get";
+    const input = document.createElement("input");
+    input.name = "q"; input.value = "dynamic submission";
+    form.append(input); body.append(form);
+    form.submit();
+  });
+  await expect(frame.getByRole("heading", { name: "GET result" })).toBeVisible();
+  await expect(frame.getByText("dynamic submission", { exact: true })).toBeVisible();
+  frame = await openTarget(page, fixture);
   await frame.getByRole("button", { name: "POST form" }).click();
   await expect(frame.getByRole("heading", { name: "POST result" })).toBeVisible();
   await expect(frame.getByText("name=Bromine", { exact: true })).toBeVisible();
   await expect(page.locator("#address")).toHaveValue("https://fixture.example/post");
+  frame = await openTarget(page, fixture);
+  await frame.locator('form[method="post"]').evaluate((form) => form.submit());
+  await expect(frame.getByRole("heading", { name: "POST result" })).toBeVisible();
+  await expect(frame.getByText("name=Bromine", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("configured WebSocket relay forwards text through the real browser bridge", async ({ page }) => {
+  test.skip(!production || test.info().project.name !== "desktop", "Hosted authenticated relay is checked once, on desktop Chromium.");
+  const sockets = [];
+  page.on("websocket", (socket) => sockets.push(socket.url()));
+  await page.goto("/");
+  const config = await page.evaluate(() => ({ url: window.BROMINE_CONFIG?.supabaseUrl, configured: Boolean(window.BROMINE_CONFIG?.supabasePublishableKey) }));
+  test.skip(!config.url || !config.configured, "The optional hosted relay is not configured.");
+  const frame = await openTarget(page);
+  await expectPageContent(frame, "Fixture page");
+  const received = await frame.locator("body").evaluate(() => new Promise((resolve, reject) => {
+    const socket = new WebSocket("wss://gateway.discord.gg/?v=10&encoding=json");
+    const opcodes = [];
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.close();
+      if (error) reject(new Error(error));
+      else resolve(opcodes);
+    };
+    const timer = setTimeout(() => finish("The browser relay did not acknowledge the heartbeat."), 25000);
+    socket.onerror = () => finish("The browser could not connect through the authenticated relay.");
+    socket.onclose = (event) => finish(`The relay closed before acknowledgement (${event.code}).`);
+    socket.onmessage = (event) => {
+      let message;
+      try { message = JSON.parse(event.data); }
+      catch { finish("The relay returned an invalid text frame."); return; }
+      opcodes.push(message.op);
+      if (message.op === 10) socket.send(JSON.stringify({ op: 1, d: null }));
+      else if (message.op === 11 && opcodes.includes(10)) finish();
+    };
+  }));
+  expect(received).toEqual(expect.arrayContaining([10, 11]));
+  expect(sockets).toHaveLength(1);
+  expect(new URL(sockets[0]).hostname).toBe(new URL(config.url).hostname);
+  expect(new URL(sockets[0]).pathname).toBe("/functions/v1/ws-relay");
 });
 
 test("search uses the selected engine and correct encoded query", async ({ page }) => {

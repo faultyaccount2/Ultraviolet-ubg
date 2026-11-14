@@ -134,6 +134,12 @@ test("CSS rewrites quoted URLs, imports, data URLs and external resources", () =
   assert.match(output, /url=https%3A%2F%2Fexample.com%2Fassets%2Fimage%28a%29.png%3Fx%3D1/);
   assert.match(output, /cdn.example/);
   assert.match(output, /data:image\/png;base64,AAAA/);
+  const recovered = rewriteCss('.a{background:url(one.png)}} .b{background:url(two.png)}', "https://example.com/assets/style.css");
+  assert.match(recovered, /url=https%3A%2F%2Fexample.com%2Fassets%2Fone.png/);
+  assert.match(recovered, /url=https%3A%2F%2Fexample.com%2Fassets%2Ftwo.png/);
+  const inline = rewriteHtml('<style>.a{background:url(/image.svg)}}</style><h1>Recoverable CSS</h1>', "https://example.com/", "https://example.com/");
+  assert.match(inline, /url=https%3A%2F%2Fexample.com%2Fimage.svg/);
+  assert.match(inline, /Recoverable CSS/);
 });
 
 test("POST bodies and HEAD are preserved, with unsupported methods and compression/size limits surfaced", async () => {

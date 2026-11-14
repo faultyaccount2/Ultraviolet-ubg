@@ -102,7 +102,7 @@ Deno.serve(async (request) => {
   let client: WebSocket;
   let handshake: Response;
   try {
-    const upgraded = Deno.upgradeWebSocket(request);
+    const upgraded = Deno.upgradeWebSocket(request, { protocol: offered[0] });
     client = upgraded.socket;
     handshake = upgraded.response;
   }

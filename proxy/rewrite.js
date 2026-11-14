@@ -1,5 +1,5 @@
 import { parse, parseFragment, serialize } from "parse5";
-import postcss from "postcss";
+import safeParser from "postcss-safe-parser";
 import valueParser from "postcss-value-parser";
 import { proxyUrl } from "../shared/proxy-url.js";
 
@@ -11,7 +11,7 @@ function rewriteUrl(value, base, options) {
 }
 
 export function rewriteCss(source, base, options = {}) {
-  const root = postcss.parse(source);
+  const root = safeParser(source);
   function rewriteValue(value, type = "image") {
     const parsed = valueParser(value);
     parsed.walk((node) => {
