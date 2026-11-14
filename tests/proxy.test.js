@@ -185,6 +185,23 @@ test("compressed JSON POST bodies retain their content encoding and raw bytes", 
   assert.equal(gunzipSync(outgoing.body).toString(), '{"search":"cats"}');
 });
 
+test("XML POST bodies are forwarded unchanged for search APIs", async () => {
+  const body = Buffer.from("<SearchRequest><Query>cats</Query></SearchRequest>");
+  let outgoing;
+  const result = await invoke("https://www.bing.com/web/xlsc.aspx", {
+    method: "POST",
+    body,
+    requestHeaders: { "content-type": "text/xml" },
+    send: (_url, options) => {
+      outgoing = options;
+      return { status: 200, headers: { "content-type": "application/xml" }, body: Buffer.from("<SearchResponse/>") };
+    },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.equal(outgoing.headers["content-type"], "text/xml");
+  assert.deepEqual(outgoing.body, body);
+});
+
 test("redirects are validated per hop, including private IP and changed DNS destinations", async () => {
   const redirects = await invoke("https://fixture.example/redirect");
   assert.equal(redirects.statusCode, 200);

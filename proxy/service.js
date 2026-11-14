@@ -23,12 +23,13 @@ const isolatedDocumentPolicy = "sandbox allow-scripts allow-forms allow-download
 
 async function readBody(req) {
   const contentType = req.headers["content-type"] || "";
-  const supported = /^(application\/(?:x-www-form-urlencoded|json(?:\+protobuf)?)|text\/plain)(?:;|$)/i.test(contentType);
+  const supported = /^(application\/(?:x-www-form-urlencoded|json(?:\+protobuf)?|xml)|text\/(?:plain|xml))(?:;|$)/i.test(contentType);
+  const structured = /^application\/(?:x-www-form-urlencoded|json(?:\+protobuf)?)(?:;|$)/i.test(contentType);
   let body;
   if (Buffer.isBuffer(req.body)) body = req.body;
   else if (typeof req.body === "string") body = Buffer.from(req.body);
   else if (req.body && typeof req.body === "object") {
-    if (!supported) throw new ProxyError(415, "Only URL-encoded, JSON and text POST bodies are supported. Multipart uploads are not supported.");
+    if (!structured) throw new ProxyError(415, "Only URL-encoded and JSON object bodies are supported. Multipart uploads are not supported.");
     if (/^application\/json(?:\+protobuf)?(?:;|$)/i.test(contentType)) body = Buffer.from(JSON.stringify(req.body));
     else {
       const fields = new URLSearchParams();
@@ -48,7 +49,7 @@ async function readBody(req) {
     body = Buffer.concat(chunks);
   }
   if (body.length > MAX_REQUEST_BYTES) throw new ProxyError(413, "The POST body exceeds the 1 MB limit.");
-  if (body.length && !supported) throw new ProxyError(415, "Only URL-encoded, JSON and text POST bodies are supported. Multipart uploads are not supported.");
+  if (body.length && !supported) throw new ProxyError(415, "Only URL-encoded, JSON, XML and text POST bodies are supported. Multipart uploads are not supported.");
   return body;
 }
 

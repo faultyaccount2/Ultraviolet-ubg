@@ -57,7 +57,7 @@ still rewriting resource URLs.
 JavaScript source is not blindly rewritten; a frame bridge routes `fetch`
 and XHR requests and reports navigation to the browser UI.
 Empty POSTs need no content type. `Request`-object fetch bodies are preserved;
-gzip/deflate/Brotli request encodings and JSON bodies labeled
+gzip/deflate/Brotli request encodings, XML API payloads and JSON bodies labeled
 `application/json+protobuf` are forwarded unchanged within the same 1 MB
 request limit. Proxied images use
 anonymous CORS so canvas drawing does not expose app credentials or fail solely
