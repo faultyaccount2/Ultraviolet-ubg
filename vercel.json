@@ -1,7 +1,31 @@
 {
-  "buildCommand": "echo 'Static site + API deployment'",
+  "buildCommand": "pnpm run build",
   "outputDirectory": "public",
+  "functions": {
+    "api/proxy.js": {
+      "maxDuration": 300,
+      "includeFiles": "filters/**"
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    }
+  ],
   "rewrites": [
+    { "source": "/terms", "destination": "/legal.html" },
+    { "source": "/privacy", "destination": "/legal.html" },
+    { "source": "/legal", "destination": "/legal.html" },
+    { "source": "/copyright", "destination": "/legal.html" },
+    { "source": "/dmca", "destination": "/legal.html" },
+    { "source": "/acceptable-use", "destination": "/legal.html" },
+    { "source": "/abuse", "destination": "/legal.html" },
+    { "source": "/contact", "destination": "/legal.html" },
+    { "source": "/transparency", "destination": "/legal.html" },
     {
       "source": "/",
       "destination": "/index.html"

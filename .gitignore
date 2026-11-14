@@ -3,3 +3,12 @@ dist/
 *.tgz
 metafile.json
 .vercel
+public/app.js
+public/proxy-client.js
+public/cache-worker.js
+public/legal.js
+public/version.json
+public/runtime-config.js
+playwright-report/
+test-results/
+filters/compiled.json
