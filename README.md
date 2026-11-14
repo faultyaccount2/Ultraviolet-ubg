@@ -184,6 +184,8 @@ closes sockets after 120 seconds and some real-time apps may reconnect or fail.
 Vercel runs `pnpm run build`, serves `public/`, and deploys `api/proxy.js`.
 The function bundle explicitly includes the compiled filters and uBlock
 Origin's public-suffix data, which its runtime loads from disk.
+Dependency assets must be included from pnpm's real package directory, not
+from beneath its `node_modules` symlink, or Vercel rejects the function bundle.
 The optional Supabase relay is a separate deployment. No Wisp server, BareMux,
 Epoxy or VPS is required.
 Deploy through the connected GitHub integration **only after local tests
