@@ -10,6 +10,7 @@ import { proxyUrl, unproxyUrl } from "../shared/proxy-url.js";
 import { isBlocked } from "../proxy/filtering.js";
 import { fixtureResponse } from "./fixtures.js";
 import { MemoryCacheStorage } from "../frontend/memory-cache.js";
+import { gzipSync, gunzipSync } from "node:zlib";
 
 test("document caches snapshot consumed responses and honor Vary and query matching", async () => {
   const storage = new MemoryCacheStorage();
@@ -90,8 +91,8 @@ test("mixed DNS answers are rejected and the socket lookup stays pinned", async 
   });
 });
 
-async function invoke(target, { method = "GET", body, type, requestHeaders = {}, send = fixtureResponse, resolve = async () => [{ address: "93.184.216.34", family: 4 }], blocked = async () => false } = {}) {
-  const req = { method, url: proxyUrl(target, { type }), headers: requestHeaders, body };
+async function invoke(target, { method = "GET", body, type, origin, requestHeaders = {}, send = fixtureResponse, resolve = async () => [{ address: "93.184.216.34", family: 4 }], blocked = async () => false } = {}) {
+  const req = { method, url: proxyUrl(target, { type, origin }), headers: requestHeaders, body };
   const res = { statusCode: 200, headers: {}, setHeader(name, value) { this.headers[name.toLowerCase()] = value; }, end(value) { this.body = value ? Buffer.from(value) : Buffer.alloc(0); } };
   await createProxyHandler({ send, resolve, blocked })(req, res);
   return res;
@@ -119,6 +120,7 @@ test("the gateway sends the target path/query, strips application credentials an
   assert.equal(outgoing.url.search, "?hello=world");
   assert.equal(outgoing.options.headers.cookie, undefined);
   assert.equal(outgoing.options.headers.authorization, undefined);
+  assert.equal(outgoing.options.headers.origin, "https://fixture.example");
   assert.equal(result.statusCode, 200);
   assert.match(result.headers["content-security-policy"], /sandbox/);
   assert.match(result.headers["content-security-policy"], /frame-ancestors 'self'/);
@@ -128,6 +130,59 @@ test("the gateway sends the target path/query, strips application credentials an
   assert.equal(nested.statusCode, 200);
   assert.match(nested.headers["content-security-policy"], /sandbox allow-scripts allow-forms allow-downloads/);
   assert.doesNotMatch(nested.headers["content-security-policy"], /allow-same-origin|frame-ancestors/);
+});
+
+test("the gateway forwards only bounded site API headers and supplies the proxied site origin", async () => {
+  let outgoing;
+  const result = await invoke("https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT", {
+    method: "POST",
+    body: '{"client":"web"}',
+    origin: "https://www.youtube.com/",
+    requestHeaders: {
+      "content-type": "application/json+protobuf",
+      "x-goog-api-key": "public-site-api-key",
+      "x-goog-visitor-id": "visitor",
+      "x-youtube-client-name": "1",
+      "x-youtube-client-version": "2",
+      "x-unknown-custom": "discard",
+      origin: "null",
+      cookie: "app-session=private",
+      authorization: "Bearer app-token",
+    },
+    send: (url, options) => {
+      outgoing = { url, options };
+      return { status: 200, headers: { "content-type": "text/plain" }, body: Buffer.from("ok") };
+    },
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(outgoing.options.headers.origin, "https://www.youtube.com");
+  assert.equal(outgoing.options.headers["x-goog-api-key"], "public-site-api-key");
+  assert.equal(outgoing.options.headers["x-goog-visitor-id"], "visitor");
+  assert.equal(outgoing.options.headers["x-youtube-client-name"], "1");
+  assert.equal(outgoing.options.headers["x-unknown-custom"], undefined);
+  assert.equal(outgoing.options.headers.cookie, undefined);
+  assert.equal(outgoing.options.headers.authorization, undefined);
+  assert.equal(outgoing.options.headers["content-type"], "application/json+protobuf");
+});
+
+test("compressed JSON POST bodies retain their content encoding and raw bytes", async () => {
+  const body = gzipSync(Buffer.from('{"search":"cats"}'));
+  let outgoing;
+  const result = await invoke("https://www.youtube.com/youtubei/v1/search", {
+    method: "POST",
+    body,
+    origin: "https://www.youtube.com/",
+    requestHeaders: { "content-type": "application/json", "content-encoding": "gzip" },
+    send: (_url, options) => {
+      outgoing = options;
+      return { status: 200, headers: { "content-type": "application/json" }, body: Buffer.from("{}") };
+    },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.equal(outgoing.headers["content-encoding"], "gzip");
+  assert.deepEqual(outgoing.body, body);
+  assert.equal(gunzipSync(outgoing.body).toString(), '{"search":"cats"}');
 });
 
 test("redirects are validated per hop, including private IP and changed DNS destinations", async () => {

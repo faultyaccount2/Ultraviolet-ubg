@@ -38,6 +38,9 @@ top-level access. DIRECT respects the destination's `X-Frame-Options` and CSP
 `frame-ancestors`; the app cannot override those headers on a native site.
 Neither challenge loading nor a fixture test proves successful
 live verification. No remote browser or automatic challenge solver is provided.
+Text searches use Bing by default, which returned visible results in the live
+check. Google and DuckDuckGo remain selectable but may require their own human
+verification or refuse proxied traffic.
 Shortcuts use Alt+T/W/L/R and Alt+Left/Right to avoid taking over browser
 Ctrl/Cmd shortcuts. Icons and favicons are local SVGs; typography deliberately
 uses system fonts instead of the missing, obfuscated Switzer font.
@@ -53,8 +56,10 @@ user submissions. CSS parsing recovers browser-tolerated syntax errors while
 still rewriting resource URLs.
 JavaScript source is not blindly rewritten; a frame bridge routes `fetch`
 and XHR requests and reports navigation to the browser UI.
-Empty POSTs need no content type. JSON bodies labeled `application/json+protobuf`
-are forwarded unchanged within the same 1 MB request limit. Proxied images use
+Empty POSTs need no content type. `Request`-object fetch bodies are preserved;
+gzip/deflate/Brotli request encodings and JSON bodies labeled
+`application/json+protobuf` are forwarded unchanged within the same 1 MB
+request limit. Proxied images use
 anonymous CORS so canvas drawing does not expose app credentials or fail solely
 because the document has an opaque origin.
 Same-site History API state changes keep the proxy URL and app address bar in
@@ -84,6 +89,13 @@ headers are never forwarded. DNS answers are checked for non-public addresses
 at every redirect, then pinned to the actual socket while TLS verifies the
 original hostname. Private, loopback, link-local and reserved addresses are
 blocked, including alternate IPv4 representations and mapped IPv6.
+The API endpoint reads bounded request bytes without JSON body-parser
+normalization, preserving compressed JSON/protobuf payloads. The proxy preserves
+only a small explicit set of public site API headers
+(including YouTube/Google client identifiers, Discord client metadata and
+Microsoft search client identifiers); application cookies, authorization and
+unknown custom headers are not forwarded. The upstream `Origin` is set to the
+proxied page's origin for normal cross-origin API semantics.
 
 Remote proxy documents have an opaque sandboxed origin. Their scripts get
 isolated in-memory cookie, localStorage and sessionStorage implementations;

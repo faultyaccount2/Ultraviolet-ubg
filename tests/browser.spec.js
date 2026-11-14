@@ -254,7 +254,22 @@ test("classic workers proxy fetch and cache responses without exposing bootstrap
     worker.onerror = (event) => { clearTimeout(timer); worker.terminate(); reject(new Error(event.message)); };
     worker.postMessage("run");
   }));
-  expect(response).toEqual({ text: "Fetch loaded: worker", isCache: true });
+  expect(response).toEqual({ text: expect.stringContaining("name=worker"), isCache: true });
+});
+
+test("fetch preserves a Request body's method, headers and payload while proxying", async ({ page }) => {
+  test.skip(production, "Deterministic POST fixture.");
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  const body = await frame.locator("body").evaluate(async () => {
+    const request = new Request("/post", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "name=request-body",
+    });
+    return await (await fetch(request)).text();
+  });
+  expect(body).toContain("name=request-body");
 });
 
 test("configured WebSocket relay forwards text through the real browser bridge", async ({ page }) => {
@@ -300,10 +315,14 @@ test("search uses the selected engine and correct encoded query", async ({ page 
   test.skip(production, "Production search providers may reject automated requests; no fake search response is deployed.");
   await page.goto("/");
   await setProxyMode(page);
+  await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByLabel("Search engine", { exact: true })).toHaveValue("bing");
+  await page.getByRole("button", { name: "Close settings" }).click();
   await page.getByRole("textbox", { name: "Search the web", exact: true }).fill("hello world");
   await page.getByRole("textbox", { name: "Search the web", exact: true }).press("Enter");
   await expect(page.frameLocator(".tab-page:not([hidden]) iframe").getByRole("heading", { name: "Results for hello world" })).toBeVisible();
-  await expect(page.locator("#address")).toHaveValue("https://duckduckgo.com/?q=hello%20world");
+  await expect(page.locator("#address")).toHaveValue("https://www.bing.com/search?q=hello%20world");
 });
 
 test("Direct stays embedded without native tabs and per-site Proxy overrides persist separately", async ({ page, context }) => {

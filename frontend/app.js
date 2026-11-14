@@ -50,7 +50,7 @@ const engines = {
   google: "https://www.google.com/search?q=",
 };
 const defaults = {
-  theme: "mocha", engine: "duckduckgo", adblock: true, mode: "proxy",
+  theme: "mocha", engine: "bing", adblock: true, mode: "proxy",
   proxyDomains: [], restore: false, homepage: "", bookmarksBar: false, statusBar: true,
   accent: "#b4befe", opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
   textSize: 14, logging: false, cacheEnabled: false, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",

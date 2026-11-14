@@ -9,6 +9,16 @@ import { proxyParameters } from "../shared/proxy-url.js";
 const requestTypes = new Set(["document", "subdocument", "script", "stylesheet", "image", "font", "media", "object", "xmlhttprequest", "other"]);
 const redirects = new Set([301, 302, 303, 307, 308]);
 const MAX_REQUEST_BYTES = 1024 * 1024;
+const MAX_FORWARDED_HEADER_BYTES = 16 * 1024;
+const forwardedHeaderNames = new Set([
+  "x-youtube-client-name", "x-youtube-client-version", "x-youtube-bootstrap-logged-in",
+  "x-youtube-page-label", "x-youtube-page-cl", "x-youtube-utc-offset", "x-youtube-device",
+  "x-youtube-time-zone", "x-youtube-ad-signals",
+  "x-goog-api-key", "x-goog-visitor-id", "x-goog-request-time", "x-goog-authuser", "x-goog-pageid",
+  "x-origin", "x-client-data", "x-discord-locale", "x-discord-timezone", "x-super-properties",
+  "x-fingerprint", "x-context-properties", "x-debug-options",
+  "x-msedge-clientid", "x-msedge-ref", "x-mse-clientid", "x-mse-cf",
+]);
 const isolatedDocumentPolicy = "sandbox allow-scripts allow-forms allow-downloads; base-uri 'none'";
 
 async function readBody(req) {
@@ -114,13 +124,29 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
           "user-agent": req.headers["user-agent"] || "Mozilla/5.0 (compatible; BromineHTTPProxy/1.0)",
           "accept-language": req.headers["accept-language"] || "en-US,en;q=0.9",
           referer: new URL(origin).origin + "/",
+          origin: new URL(origin).origin,
         };
+        let forwardedHeaderBytes = 0;
+        for (const [name, value] of Object.entries(req.headers)) {
+          if (!forwardedHeaderNames.has(name) || typeof value !== "string") continue;
+          const bytes = Buffer.byteLength(name) + Buffer.byteLength(value);
+          if (bytes > 8192 || forwardedHeaderBytes + bytes > MAX_FORWARDED_HEADER_BYTES) continue;
+          outgoingHeaders[name] = value;
+          forwardedHeaderBytes += bytes;
+        }
         if (req.headers.range) {
           if (!/^bytes=(?:\d+-\d*|-\d+)$/.test(req.headers.range)) throw new ProxyError(400, "Only a single valid byte range is supported.");
           outgoingHeaders.range = req.headers.range;
         }
         if (body) {
           if (req.headers["content-type"]) outgoingHeaders["content-type"] = req.headers["content-type"];
+          if (req.headers["content-encoding"]) {
+            const encoding = String(req.headers["content-encoding"]).toLowerCase();
+            if (!["identity", "gzip", "deflate", "br"].includes(encoding)) {
+              throw new ProxyError(415, "The POST body uses an unsupported content encoding.");
+            }
+            outgoingHeaders["content-encoding"] = encoding;
+          }
           outgoingHeaders["content-length"] = String(body.length);
         }
         response = await send(url, { records, method, body, headers: outgoingHeaders, signal });

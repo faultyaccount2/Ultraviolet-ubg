@@ -1,5 +1,6 @@
 import { proxyUrl, unproxyUrl, resourceUrl } from "../shared/proxy-url.js";
 import { redactUrl } from "../shared/address.js";
+import { proxyRequest } from "../shared/proxy-request.js";
 import valueParser from "postcss-value-parser";
 import { MemoryCache, MemoryCacheStorage } from "./memory-cache.js";
 
@@ -163,8 +164,7 @@ const nativeFetch = window.fetch.bind(window);
 window.fetch = async (input, options) => {
   const raw = input instanceof NativeRequest ? input.url : String(input);
   const start = performance.now();
-  const response = input instanceof NativeRequest ? await nativeFetch(new NativeRequest(resource(input.url), input), { ...options, mode: "cors", credentials: "omit" }) :
-    await nativeFetch(resource(raw), { ...options, mode: "cors", credentials: "omit" });
+  const response = await nativeFetch(await proxyRequest(input, options, resource, NativeRequest));
   if (logging) send({ type: "bromine:request", url: redactUrl(originalUrl(raw)),
     method: options?.method || (input instanceof NativeRequest ? input.method : "GET"), status: response.status, resourceType: "xmlhttprequest",
     duration: performance.now() - start, size: Number(response.headers.get("content-length")) || null,

@@ -1,4 +1,5 @@
 import { resourceUrl } from "../shared/proxy-url.js";
+import { proxyRequest } from "../shared/proxy-request.js";
 import { MemoryCache, MemoryCacheStorage } from "./memory-cache.js";
 
 const config = self.BROMINE_WORKER_CONFIG;
@@ -16,10 +17,7 @@ self.Request = class extends NativeRequest {
   }
 };
 const nativeFetch = self.fetch.bind(self);
-self.fetch = (input, options) => {
-  const request = input instanceof NativeRequest ? new NativeRequest(resource(input.url), input) : resource(input);
-  return nativeFetch(request, { ...options, mode: "cors", credentials: "omit" });
-};
+self.fetch = async (input, options) => nativeFetch(await proxyRequest(input, options, resource, NativeRequest));
 const nativeOpen = XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open = function (method, url, ...args) { return nativeOpen.call(this, method, resource(url), ...args); };
 const nativeSend = XMLHttpRequest.prototype.send;
