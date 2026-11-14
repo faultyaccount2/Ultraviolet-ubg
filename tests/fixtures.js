@@ -4,6 +4,7 @@ const html = `<!doctype html><html><head><title>Fixture page</title>
 <script src="//fixture.example/assets/app.js"></script></head><body>
 <h1>Fixture page</h1><p id="script-status">Waiting for script</p><p id="fetch-status">Waiting for fetch</p>
 <img id="image" src="image.svg?size=1" srcset="image.svg 1x, https://fixture.example/assets/image.svg?size=2 2x" alt="Fixture">
+<iframe id="nested-frame" src="../nested" title="Nested fixture"></iframe>
 <a href="../next?hello=world#section">Relative next</a>
 <a href="https://fixture.example/redirect">Redirect</a>
 <form action="../get" method="get"><label>Query<input name="q" value="hello world"></label><button>GET form</button></form>
@@ -20,6 +21,7 @@ export function fixtureResponse(url, options) {
   else if (url.pathname === "/private-redirect") { status = 302; headers.location = "http://127.0.0.1/"; body = ""; }
   else if (url.pathname === "/loop") { status = 302; headers.location = "/loop"; body = ""; }
   else if (url.pathname === "/next") body = `<title>Next page</title><h1>Next page</h1><p>${url.search}</p>`;
+  else if (url.pathname === "/nested") body = "<title>Nested fixture</title><h1>Nested fixture</h1>";
   else if (url.pathname === "/get") body = `<title>GET result</title><h1>GET result</h1><p>${url.searchParams.get("q")}</p>`;
   else if (url.pathname === "/file.txt") {
     headers["content-type"] = "text/plain"; headers["accept-ranges"] = "bytes";
@@ -48,7 +50,7 @@ export function fixtureResponse(url, options) {
   else if (url.pathname === "/assets/import.css") { headers["content-type"] = "text/css"; body = "body{font-family:Arial,sans-serif}"; }
   else if (url.pathname === "/assets/app.js") {
     headers["content-type"] = "application/javascript";
-    body = 'document.addEventListener("DOMContentLoaded",()=>{document.cookie="fixture=1";localStorage.setItem("fixture","isolated");document.getElementById("script-status").textContent="Script loaded";fetch(new Request("/data?value=hello",{mode:"same-origin",credentials:"include",headers:{"X-SG-E":"fixture"}})).then(r=>r.text()).then(text=>document.getElementById("fetch-status").textContent=text);const xhr=new XMLHttpRequest();xhr.open("GET","/data?value=xhr");xhr.withCredentials=true;xhr.setRequestHeader("X-Fixture","1");xhr.onload=()=>{document.getElementById("script-status").dataset.xhr=xhr.responseText};xhr.send();const image=document.createElement("img");image.id="dynamic-image";image.src="/assets/image.svg?dynamic=1";document.body.append(image);const block=document.createElement("div");block.id="dynamic-html";block.innerHTML=\'<img src="/assets/image.svg?html=1" alt="Dynamic HTML">\';document.body.append(block);});';
+    body = 'document.addEventListener("DOMContentLoaded",()=>{document.cookie="fixture=1";localStorage.setItem("fixture","isolated");document.getElementById("script-status").dataset.cache=("caches" in window&&window.caches)?"available":"unavailable";document.getElementById("script-status").textContent="Script loaded";fetch(new Request("/data?value=hello",{mode:"same-origin",credentials:"include",headers:{"X-SG-E":"fixture"}})).then(r=>r.text()).then(text=>document.getElementById("fetch-status").textContent=text);const xhr=new XMLHttpRequest();xhr.open("GET","/data?value=xhr");xhr.withCredentials=true;xhr.setRequestHeader("X-Fixture","1");xhr.onload=()=>{document.getElementById("script-status").dataset.xhr=xhr.responseText};xhr.send();const image=document.createElement("img");image.id="dynamic-image";image.src="/assets/image.svg?dynamic=1";document.body.append(image);const block=document.createElement("div");block.id="dynamic-html";block.innerHTML=\'<img src="/assets/image.svg?html=1" alt="Dynamic HTML">\';document.body.append(block);});';
   } else if (url.pathname === "/data") { headers["content-type"] = "text/plain"; body = "Fetch loaded: " + url.searchParams.get("value"); }
   else if (["/assets/image.svg", "/assets/icon.svg"].includes(url.pathname)) {
     headers["content-type"] = "image/svg+xml";

@@ -67,6 +67,10 @@ isolated in-memory cookie, localStorage and sessionStorage implementations;
 these neither reveal app storage nor propagate authenticated server sessions.
 They cannot read the app's localStorage, access its document or navigate the
 top window. IndexedDB and origin-sensitive APIs remain conditional.
+CacheStorage is not exposed to proxied pages, so optional cache feature checks
+do not trigger its opaque-origin security error. This does not disable the
+app's separate public-resource cache. Nested proxy frames retain the opaque
+sandbox but omit the ancestor restriction that would reject an opaque parent.
 Dynamic DOM URLs, inserted HTML, styles, fetch, XHR and Request objects are
 rewritten at runtime; arbitrary JavaScript source is not regex-rewritten.
 The API is not an authentication bypass and cannot promise every site works.

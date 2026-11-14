@@ -142,7 +142,7 @@ export function rewriteHtml(source, target, requestUrl, adblock = true, extra = 
 }
 
 export function errorHtml(message) {
-  const document = parse('<!doctype html><html><head><meta charset="utf-8"><title>Unable to load page</title></head><body><main><h1>Unable to load this page</h1><p data-proxy-error></p><p>This HTTP(S) proxy cannot provide VPN, WebSocket, TCP or UDP connections.</p></main></body></html>');
+  const document = parse('<!doctype html><html><head><meta charset="utf-8"><title>Unable to load page</title></head><body><main><h1>Unable to load this page</h1><p data-proxy-error></p><p>This proxy handles public HTTP(S) pages. WebSockets require the separately configured relay; VPN, TCP and UDP connections are not provided.</p></main></body></html>');
   const paragraph = nodesOf(document).find((node) => node.tagName === "p" && node.attrs.some((item) => item.name === "data-proxy-error"));
   paragraph.childNodes.push({ nodeName: "#text", value: message, parentNode: paragraph });
   return serialize(document);

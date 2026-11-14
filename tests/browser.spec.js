@@ -17,6 +17,12 @@ async function openTarget(page, url = target) {
   return page.frameLocator(".tab-page:not([hidden]) iframe");
 }
 
+async function expectPageContent(frame, localHeading) {
+  const content = production ? frame.getByText(/This domain is for use in (?:illustrative|documentation) examples/) :
+    frame.getByRole("heading", { name: localHeading, exact: true });
+  await expect(content).toBeVisible();
+}
+
 test("homepage assets, local icons and favicon load with no console errors or broken glyphs", async ({ page }) => {
   const errors = [];
   const failed = [];
@@ -75,17 +81,17 @@ test("example/fixture navigation, back, forward, reload, home and persisted hist
   await page.goto("/");
   await setProxyMode(page);
   let frame = await openTarget(page);
-  await expect(frame.getByRole("heading", { name: production ? "Example Domain" : "Fixture page", exact: true })).toBeVisible();
+  await expectPageContent(frame, "Fixture page");
   await expect(page.getByRole("button", { name: "Back", exact: true })).toBeEnabled();
   const next = production ? "https://example.com/?test=bromine" : "https://fixture.example/next?test=bromine";
   frame = await openTarget(page, next);
-  await expect(frame.getByRole("heading", { name: production ? "Example Domain" : "Next page", exact: true })).toBeVisible();
+  await expectPageContent(frame, "Next page");
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(page.locator("#address")).toHaveValue(target);
   await page.getByRole("button", { name: "Forward", exact: true }).click();
   await expect(page.locator("#address")).toHaveValue(next);
   await page.getByRole("button", { name: "Reload", exact: true }).click();
-  await expect(page.frameLocator(".tab-page:not([hidden]) iframe").getByRole("heading", { name: production ? "Example Domain" : "Next page", exact: true })).toBeVisible();
+  await expectPageContent(page.frameLocator(".tab-page:not([hidden]) iframe"), "Next page");
   if (test.info().project.name === "mobile") {
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await page.getByRole("button", { name: "Back", exact: true }).click();
@@ -122,6 +128,10 @@ test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST
   await setProxyMode(page);
   let frame = await openTarget(page, fixture);
   await expect(frame.locator("#script-status")).toHaveText("Script loaded");
+  await expect(frame.locator("#script-status")).toHaveAttribute("data-cache", "unavailable");
+  const nested = frame.frameLocator("#nested-frame");
+  await expect(nested.getByRole("heading", { name: "Nested fixture", exact: true })).toBeVisible();
+  expect(await nested.locator("body").evaluate(() => { try { return parent.document.title; } catch (error) { return error.name; } })).toBe("SecurityError");
   await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
   await expect(frame.locator("h1")).toHaveCSS("color", "rgb(18, 52, 86)");
   expect(await frame.locator("#image").evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
@@ -165,7 +175,6 @@ test("search uses the selected engine and correct encoded query", async ({ page 
 test("Direct stays embedded without native tabs and per-site Proxy overrides persist separately", async ({ page, context }) => {
   await page.goto("/");
   const routeTarget = production ? "https://example.com/" : fixture;
-  const routeHeading = production ? "Example Domain" : "Fixture page";
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Default routing", { exact: true }).selectOption("direct");
   await page.getByRole("button", { name: "Close settings" }).click();
@@ -180,7 +189,7 @@ test("Direct stays embedded without native tabs and per-site Proxy overrides per
   await page.getByLabel("Route", { exact: true }).selectOption("proxy");
   await page.getByRole("button", { name: "Apply and reload", exact: true }).click();
   await expect(page.locator("#route-button")).toHaveText("Proxy");
-  await expect(page.frameLocator(".tab-page:not([hidden]) iframe").getByRole("heading", { name: routeHeading })).toBeVisible();
+  await expectPageContent(page.frameLocator(".tab-page:not([hidden]) iframe"), "Fixture page");
   await page.reload();
   await openTarget(page, routeTarget);
   await expect(page.locator("#route-button")).toHaveText("Proxy");

@@ -43,6 +43,8 @@ function memoryStorage() {
 }
 Object.defineProperty(window, "localStorage", { configurable: true, value: memoryStorage() });
 Object.defineProperty(window, "sessionStorage", { configurable: true, value: memoryStorage() });
+// CacheStorage's getter throws in opaque frames, even during optional feature checks.
+delete window.caches;
 const cookies = new Map();
 Object.defineProperty(document, "cookie", {
   configurable: true,

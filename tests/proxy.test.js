@@ -59,8 +59,8 @@ test("mixed DNS answers are rejected and the socket lookup stays pinned", async 
   });
 });
 
-async function invoke(target, { method = "GET", body, requestHeaders = {}, send = fixtureResponse, resolve = async () => [{ address: "93.184.216.34", family: 4 }], blocked = async () => false } = {}) {
-  const req = { method, url: proxyUrl(target), headers: requestHeaders, body };
+async function invoke(target, { method = "GET", body, type, requestHeaders = {}, send = fixtureResponse, resolve = async () => [{ address: "93.184.216.34", family: 4 }], blocked = async () => false } = {}) {
+  const req = { method, url: proxyUrl(target, { type }), headers: requestHeaders, body };
   const res = { statusCode: 200, headers: {}, setHeader(name, value) { this.headers[name.toLowerCase()] = value; }, end(value) { this.body = value ? Buffer.from(value) : Buffer.alloc(0); } };
   await createProxyHandler({ send, resolve, blocked })(req, res);
   return res;
@@ -90,8 +90,13 @@ test("the gateway sends the target path/query, strips application credentials an
   assert.equal(outgoing.options.headers.authorization, undefined);
   assert.equal(result.statusCode, 200);
   assert.match(result.headers["content-security-policy"], /sandbox/);
+  assert.match(result.headers["content-security-policy"], /frame-ancestors 'self'/);
   assert.doesNotMatch(result.headers["content-security-policy"], /allow-same-origin/);
   assert.equal(result.headers["access-control-allow-origin"], "*");
+  const nested = await invoke("https://fixture.example/nested", { type: "subdocument" });
+  assert.equal(nested.statusCode, 200);
+  assert.match(nested.headers["content-security-policy"], /sandbox allow-scripts allow-forms allow-downloads/);
+  assert.doesNotMatch(nested.headers["content-security-policy"], /allow-same-origin|frame-ancestors/);
 });
 
 test("redirects are validated per hop, including private IP and changed DNS destinations", async () => {

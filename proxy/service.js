@@ -9,6 +9,7 @@ import { proxyParameters } from "../shared/proxy-url.js";
 const requestTypes = new Set(["document", "subdocument", "script", "stylesheet", "image", "font", "media", "object", "xmlhttprequest", "other"]);
 const redirects = new Set([301, 302, 303, 307, 308]);
 const MAX_REQUEST_BYTES = 1024 * 1024;
+const isolatedDocumentPolicy = "sandbox allow-scripts allow-forms allow-downloads; base-uri 'none'";
 
 async function readBody(req) {
   const contentType = req.headers["content-type"] || "";
@@ -57,7 +58,7 @@ function headers(res) {
   res.setHeader("Access-Control-Expose-Headers", "X-Bromine-Adblock, X-Bromine-Cacheable, X-Bromine-Cache, Content-Range, Accept-Ranges, Content-Length");
   res.setHeader("Timing-Allow-Origin", "*");
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-  res.setHeader("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads; frame-ancestors 'self'; base-uri 'none'");
+  res.setHeader("Content-Security-Policy", `${isolatedDocumentPolicy}; frame-ancestors 'self'`);
 }
 
 export function createProxyHandler({ resolve, send = requestResource, blocked = isBlocked } = {}) {
@@ -93,6 +94,8 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       const origin = query.get("origin") ? validateTarget(query.get("origin")).href : initial.href;
       const type = query.get("type") || "document";
       if (!requestTypes.has(type)) throw new ProxyError(400, "Invalid resource type.");
+      // An opaque parent frame cannot match 'self'; nested documents remain sandboxed.
+      if (type === "subdocument") res.setHeader("Content-Security-Policy", isolatedDocumentPolicy);
       const signal = AbortSignal.any([AbortSignal.timeout(290000), disconnected.signal]);
       let method = req.method;
       let body = method === "POST" ? await readBody(req) : undefined;
