@@ -38,9 +38,10 @@ top-level access. DIRECT respects the destination's `X-Frame-Options` and CSP
 `frame-ancestors`; the app cannot override those headers on a native site.
 Neither challenge loading nor a fixture test proves successful
 live verification. No remote browser or automatic challenge solver is provided.
-Text searches use Bing by default, which returned visible results in the live
-check. Google and DuckDuckGo remain selectable but may require their own human
-verification or refuse proxied traffic.
+Text searches use Bing by default. Bing returned visible results in the live
+DIRECT-route check; proxied Bing may hide results depending on its upstream
+behavior. Google and DuckDuckGo remain selectable but may require their own
+human verification or refuse proxied traffic.
 Shortcuts use Alt+T/W/L/R and Alt+Left/Right to avoid taking over browser
 Ctrl/Cmd shortcuts. Icons and favicons are local SVGs; typography deliberately
 uses system fonts instead of the missing, obfuscated Switzer font.
