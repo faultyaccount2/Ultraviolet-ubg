@@ -2,6 +2,8 @@ import { proxyUrl, unproxyUrl, resourceUrl, moduleUrl } from "../shared/proxy-ur
 import { redactUrl } from "../shared/address.js";
 import { proxyRequest, proxyAuthorization, siteAuthorization } from "../shared/proxy-request.js";
 import { mapSrcset } from "../shared/srcset.js";
+import { decodeCssUrl } from "../shared/css-url.js";
+import { siteStorage, storageSeedPrefix, validStorageEntries } from "../shared/site-storage.js";
 import {
   applySiteCookie, cookieDomainMatches, cookieMatches, decodeCookieState, documentCookie, encodeCookieState, normalizeSiteCookie,
 } from "../shared/cookie-jar.js";
@@ -25,17 +27,22 @@ const adblock = script.dataset.adblock !== "0";
 let logging = script.dataset.logging === "1";
 const cache = script.dataset.cache !== "0";
 const cacheVersion = script.dataset.cacheVersion || "";
+const responseStatus = Number(script.dataset.responseStatus);
+const verification = script.dataset.verification === "1";
 const proxyOrigin = new URL(location.href).origin;
 let cookies = decodeCookieState(script.dataset.cookieState || "");
 // Site DOM snapshots must not clone or reload the proxy's bootstrap.
 script.remove();
 const pendingCookieChanges = [];
 const send = (data, transfer = []) => { if (parent !== window) parent.postMessage(data, "*", transfer); };
-const progress = (stage, url = pageUrl) => send({ type: "bromine:progress", requestUrl, stage, url: redactUrl(url) });
+const progress = (stage, url = pageUrl) => send({ type: "bromine:progress", requestUrl, stage, url: redactUrl(url), status: responseStatus, verification });
 progress("bootstrap");
 window.addEventListener("load", () => progress("loaded"), { once: true });
-window.addEventListener("error", () => progress("script-error"));
-window.addEventListener("unhandledrejection", () => progress("script-error"));
+window.addEventListener("error", (event) => {
+  const url = event.filename ? sourceUrl(event.filename) : pageUrl;
+  progress(event.error?.name === "SecurityError" ? "sandbox-error" : "script-error", /^https?:\/\//i.test(url) ? url : pageUrl);
+});
+window.addEventListener("unhandledrejection", (event) => progress(event.reason?.name === "SecurityError" ? "sandbox-error" : "script-error"));
 
 try { void navigator.serviceWorker; }
 catch (error) {
@@ -175,24 +182,30 @@ function persistCookie(cookie) {
   send({ type: "bromine:cookie", requestUrl, url: pageUrl, cookie });
 }
 
-function memoryStorage() {
-  const values = new Map();
-  const methods = Object.create(null);
-  Object.defineProperties(methods, {
-    getItem: { value: (key) => values.get(String(key)) ?? null },
-    setItem: { value: (key, value) => { values.set(String(key), String(value)); } },
-    removeItem: { value: (key) => { values.delete(String(key)); } },
-    clear: { value: () => values.clear() },
-    key: { value: (index) => [...values.keys()][index] ?? null },
-    length: { get: () => values.size, configurable: true },
-  });
-  return new Proxy(methods, {
-    get: (object, name) => name in object ? Reflect.get(object, name) : values.get(String(name)),
-    set: (_object, name, value) => { values.set(String(name), String(value)); return true; },
-  });
+const storageOrigin = new URL(target).origin;
+let storageSeed = { local: [], session: [], bridgeId: "" };
+if (window.name.startsWith(storageSeedPrefix)) {
+  const serialized = window.name.slice(storageSeedPrefix.length);
+  window.name = "";
+  try {
+    const saved = JSON.parse(serialized);
+    if (!saved || typeof saved.bridgeId !== "string" || !validStorageEntries(saved.local) || !validStorageEntries(saved.session)) throw new Error("Invalid saved site storage.");
+    if (saved.origin === storageOrigin) storageSeed = saved;
+  } catch {
+    send({ type: "bromine:unsupported", message: "Saved site storage could not be restored. This page may require signing in again." });
+  }
 }
-Object.defineProperty(window, "localStorage", { configurable: true, value: memoryStorage() });
-Object.defineProperty(window, "sessionStorage", { configurable: true, value: memoryStorage() });
+const saveStorage = (area) => (entries) => {
+  if (parent === top && parent !== window) send({ type: "bromine:storage", requestUrl, origin: storageOrigin, bridgeId: storageSeed.bridgeId, area, entries });
+};
+const local = siteStorage(storageSeed.local, saveStorage("local"));
+const session = siteStorage(storageSeed.session, saveStorage("session"));
+Object.defineProperty(window, "localStorage", { configurable: true, value: local.storage });
+Object.defineProperty(window, "sessionStorage", { configurable: true, value: session.storage });
+if (parent === top && parent !== window) window.addEventListener("beforeunload", () => {
+  // Carry only this origin's state across native same-frame reloads and form posts.
+  window.name = storageSeedPrefix + JSON.stringify({ origin: storageOrigin, bridgeId: storageSeed.bridgeId, local: local.snapshot(), session: session.snapshot() });
+});
 Object.defineProperties(window, {
   caches: { configurable: true, value: new MemoryCacheStorage() },
   Cache: { configurable: true, value: MemoryCache },
@@ -224,7 +237,7 @@ function cssResources(value) {
     if (node.type !== "function" || node.value.toLowerCase() !== "url") return;
     const raw = node.nodes.length === 1 && node.nodes[0].type === "string" ? node.nodes[0].value : valueParser.stringify(node.nodes).trim();
     if (raw.startsWith("#")) return;
-    node.nodes = [{ type: "string", quote: '"', value: resource(raw, "image") }];
+    node.nodes = [{ type: "string", quote: '"', value: resource(decodeCssUrl(raw), "image") }];
     return false;
   });
   return parsed.toString();
@@ -613,6 +626,8 @@ document.addEventListener("DOMContentLoaded", () => {
     title: document.title,
     favicon: favicon ? resource(favicon, "image") : undefined,
     error: document.querySelector("[data-proxy-error]")?.textContent,
+    status: responseStatus,
+    verification,
   });
   const refresh = document.querySelector("[data-proxy-refresh]");
   if (refresh) {

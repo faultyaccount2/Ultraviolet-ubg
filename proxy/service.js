@@ -438,6 +438,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       if (req.method !== "HEAD" && response.status !== 206 && /^(?:text\/html|application\/xhtml\+xml)(?:;|$)/i.test(contentType)) {
         output = Buffer.from(rewriteHtml(textBody(output, contentType), url.href + new URL(raw).hash, requested, adblock, {
           logging: query.get("logging") === "1", cache: query.get("cache") !== "0", cacheVersion,
+          responseStatus: response.status, verification: response.headers["cf-mitigated"] === "challenge",
           cookieState: isDocumentNavigation && url.hostname === originHost ?
             cookieStateHeader(siteCookies.filter((cookie) => !cookie.httpOnly && cookieMatches(cookie, url.href, originHost))) : "",
         }));
@@ -471,7 +472,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       else if (!(error instanceof ProxyError)) console.error("HTTP proxy request failed:", { name: error.name, code: error.code, message: error.message });
       res.statusCode = status;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      const output = requested ? rewriteHtml(errorHtml(message), requested, requested, adblock) : errorHtml(message);
+      const output = requested ? rewriteHtml(errorHtml(message), requested, requested, adblock, { responseStatus: status }) : errorHtml(message);
       return res.end(req.method === "HEAD" ? undefined : output);
     }
   };

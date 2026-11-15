@@ -137,9 +137,23 @@ cookie shim backed by the browser-local, per-site jar; it exposes only
 script-visible cookies for the current host and path. HttpOnly cookies remain
 unavailable to page scripts and are sent only on credentialed, same-host
 requests.
-localStorage and sessionStorage remain isolated in-memory implementations.
-They cannot read the app's localStorage, access its document or navigate the
-top window. IndexedDB and origin-sensitive APIs remain conditional.
+Proxy LocalStorage persists in this browser under separate per-origin keys;
+SessionStorage lasts for the current in-app tab and resets when the app reloads
+or closes. Each has a 1 MB/1024-key per-origin limit with explicit quota errors.
+Only that origin's snapshots enter its opaque frame, synchronously before page
+scripts through a window-name seed that the bootstrap immediately consumes and
+clears. Writes use an origin- and per-frame-capability-bound parent bridge;
+snapshots never enter proxy URLs, upstream requests or diagnostic logs. Native
+same-frame reloads and form posts carry the same origin-scoped seed, and
+cross-origin redirects are re-opened with the destination's own storage.
+Named property deletion is supported so logging out removes saved tokens.
+Site routing can clear the current origin's Proxy LocalStorage/SessionStorage
+without deleting other sites, cookies, or public cached assets.
+Sites cannot read the app's storage, access its document or navigate the top
+window. Existing open tabs do not receive live cross-tab storage events; reload
+to pick up another tab's changes. Nested frames remain memory-only.
+IndexedDB and origin-sensitive APIs remain conditional; retaining login state
+does not guarantee that a provider will stop requesting CAPTCHA verification.
 Document and classic-worker CacheStorage is an isolated, in-memory implementation
 of open/match/put/delete/keys and single-resource add, not persistent native
 storage or offline/service-worker support. Each context has a 200-entry/64 MB
@@ -183,6 +197,12 @@ bodies, cookie values, credentials nor page contents are logged.
 The Loading console shows bounded timestamped navigation stages, slow-load
 warnings, API starts, resource status/timings and errors. It does not collect
 arbitrary website console messages or claim to see DIRECT internals.
+Document parsing and frame-load events do not prove a site works. Upstream
+HTTP failures and explicit Cloudflare verification responses remain visible
+after load; script errors include redacted source URLs, and sandbox security
+errors are identified separately without exposing error messages or stacks.
+CSS URL rewriting decodes CSS escapes before resolving addresses, including
+escaped parentheses in CDN image filenames.
 Quick actions expose the console, URL copying, site-cache clearing, tab
 duplication and fullscreen on desktop/mobile. Download links inside Proxy pages
 use the proxy download manager rather than opening an upstream connection.

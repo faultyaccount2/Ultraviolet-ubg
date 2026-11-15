@@ -107,7 +107,7 @@
       <label class="setting">Request logging (optional)<input id="request-logging" type="checkbox"></label>
       <p class="muted">Logs only request metadata, never cookies, authorization headers or response bodies. At most 200 records per tab; native DIRECT requests cannot be inspected.</p>
       <p class="muted">Native privacy permissions, download folders, HTTP cache, third-party cookies/storage and direct-site uBlock filtering are controlled by your browser/extensions, not this page.</p>
-      <p class="muted">Settings and history are saved only in this browser. Proxy cookies persist in a separate per-site browser-local jar; HttpOnly values stay hidden from site scripts. Other site storage and basic CacheStorage remain isolated in memory, never exposing the app's data. Site caches are limited to 200 entries / 64 MB per context and disappear when it closes. Complex login flows and IndexedDB may not work.</p>
+      <p class="muted">Settings and history are saved only in this browser. Proxy cookies persist in a separate per-site browser-local jar; HttpOnly values stay hidden from site scripts. Proxy LocalStorage, including saved login state, persists separately per origin and is restored before page scripts run. SessionStorage lasts for the app tab; both are limited to 1 MB / 1024 keys per origin and cannot read app storage. Site CacheStorage stays in memory, limited to 200 entries / 64 MB per context. Complex login flows, IndexedDB and CAPTCHA checks may not work.</p>
       <p class="muted">Shortcuts: Alt+T new tab, Alt+W close tab, Alt+L address bar, Alt+R reload, Alt+Left/Right navigation.</p>
     </dialog>
     <dialog id="routing-dialog" class="compact-dialog">
@@ -118,6 +118,8 @@
       <p class="muted">Safe public-asset caching is always enabled for Proxy pages. Private responses and downloads are never stored in the shared cache.</p>
       <button id="apply-site" class="secondary-button">Apply and reload</button>
       <button id="verify-direct" class="secondary-button">Use DIRECT for manual verification</button>
+      <button id="clear-site-storage" class="secondary-button">Clear this site's saved storage</button>
+      <p class="muted">Clears this origin's Proxy LocalStorage and SessionStorage and reloads its open Proxy tabs. This can sign you out. Cookies, other sites and DIRECT browser storage are not cleared. Public-cache clearing does not remove saved login storage.</p>
       <p class="muted">Manual verification uses the whole site in DIRECT, not just its CAPTCHA. The saved route stays DIRECT until you change it. The browser manages the site's cookies and login; they are not copied to Proxy or cleared by Bromine's cache controls. Switching to Proxy may lose verification and login.</p>
       <p class="muted">CAPTCHA and Cloudflare checks are not guaranteed to work in an iframe. Sites may require a top-level browser tab or block third-party cookies. A loaded page is not proof that verification succeeded. No challenges are automatically solved or bypassed.</p>
       <p class="muted">Direct remains in an iframe, without rewriting. Sites may refuse embedding. Cross-origin errors cannot be classified reliably; use Proxy explicitly instead of guessing past a TLS, authentication or security failure.</p>

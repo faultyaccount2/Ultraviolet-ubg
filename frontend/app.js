@@ -6,6 +6,7 @@ import { configureCache, cacheCommand } from "./cache.js";
 import { Downloads } from "./downloads.js";
 import { connectWebSocket } from "./relay.js";
 import { cookieDomainMatches, decodeSiteCookie, encodeCookieState, encodeSiteCookie } from "../shared/cookie-jar.js";
+import { storageSeedPrefix, validStorageEntries } from "../shared/site-storage.js";
 
 const $ = (selector) => document.querySelector(selector);
 const tabs = [];
@@ -388,6 +389,8 @@ function createTab() {
 function renderPage(tab) {
   clearTimeout(tab.loadTimer);
   tab.stopped = false;
+  tab.documentError = null;
+  tab.scriptError = false;
   for (const cleanup of tab.relayCleanups || []) cleanup();
   tab.relayCleanups = new Set();
   tab.page.replaceChildren();
@@ -407,6 +410,15 @@ function renderPage(tab) {
     const frame = document.createElement("iframe");
     frame.title = `Web page: ${entry(tab).title}`;
     const direct = tab.route.mode === "direct";
+    tab.storageOrigin = direct ? null : new URL(entry(tab).url).origin;
+    if (!direct) {
+      tab.siteSessions ||= new Map();
+      tab.storageBridgeId = crypto.randomUUID();
+      const local = readStore(storageSeedPrefix + tab.storageOrigin, [], validStorageEntries);
+      frame.name = storageSeedPrefix + JSON.stringify({
+        origin: tab.storageOrigin, bridgeId: tab.storageBridgeId, local, session: tab.siteSessions.get(tab.storageOrigin) || [],
+      });
+    }
     frame.setAttribute("sandbox", direct && new URL(entry(tab).url).origin !== location.origin ? "allow-scripts allow-forms allow-downloads allow-same-origin" : "allow-scripts allow-forms allow-downloads");
     frame.referrerPolicy = "no-referrer";
     const site = sites[new URL(entry(tab).url).hostname];
@@ -481,6 +493,7 @@ function openDialog(name) {
     $("#site-route").value = site?.mode || settings.mode;
     $("#site-adblock").checked = site?.adblock ?? settings.adblock;
     $("#verify-direct").disabled = !url;
+    $("#clear-site-storage").disabled = !url;
   }
   if (name === "cache") refreshCache().catch((error) => notice(error.message));
   $(`#${name}-dialog`).showModal();
@@ -659,6 +672,19 @@ $("#verify-direct").addEventListener("click", () => {
   $("#apply-site").click();
   notice("This site stays DIRECT for manual verification and login. Browser cookie restrictions still apply. Switching to Proxy does not transfer the session.");
 });
+$("#clear-site-storage").addEventListener("click", () => {
+  const url = entry(current()).url;
+  if (!url) return;
+  const origin = new URL(url).origin;
+  try { localStorage.removeItem(storageSeedPrefix + origin); }
+  catch { notice("Site storage could not be cleared because browser storage is unavailable."); return; }
+  for (const tab of tabs) {
+    tab.siteSessions?.delete(origin);
+    if (tab.storageOrigin === origin && tab.route?.mode === "proxy") renderPage(tab);
+  }
+  $("#routing-dialog").close();
+  notice("This site's Proxy LocalStorage and SessionStorage were cleared. Cookies are unchanged.");
+});
 $("#search-engine").addEventListener("change", (event) => {
   settings.engine = event.target.value;
   writeStore("bromine:settings", settings);
@@ -682,19 +708,37 @@ window.addEventListener("message", (event) => {
   const tab = tabs.find((item) => item.frame?.contentWindow === event.source);
   const data = event.data;
   if (!tab || tab.stopped || !data || typeof data !== "object") return;
-  if (data.type === "bromine:cookie") {
+  if (data.type === "bromine:storage") {
+    if (tab.route?.mode !== "proxy" || data.requestUrl !== tab.expectedUrl || data.origin !== tab.storageOrigin ||
+        data.bridgeId !== tab.storageBridgeId ||
+        !["local", "session"].includes(data.area) || !validStorageEntries(data.entries)) {
+      notice("An invalid or out-of-scope site storage update was rejected.");
+      return;
+    }
+    if (data.area === "local") writeStore(storageSeedPrefix + tab.storageOrigin, data.entries);
+    else tab.siteSessions.set(tab.storageOrigin, data.entries);
+  } else if (data.type === "bromine:cookie") {
     persistSiteCookie(tab, data);
   } else if (data.type === "bromine:progress" && data.requestUrl === tab.expectedUrl) {
     const stages = {
       bootstrap: "Document received; executing scripts and styles",
-      loaded: "Page load completed",
-      "script-error": "A page script failed; see failed resources in Request inspector",
+      loaded: "Frame load completed; site functionality is not verified",
+      "script-error": "A page script failed; a successful resource download does not guarantee script execution",
+      "sandbox-error": "A page script hit a sandbox security restriction",
       "request-start": "Starting API request",
       "request-error": "An API request failed",
     };
     if (!Object.hasOwn(stages, data.stage)) return;
     const failed = data.stage.endsWith("error");
-    if (data.stage === "bootstrap" || data.stage === "loaded") tab.status = stages[data.stage];
+    if (data.stage === "bootstrap") {
+      tab.documentError = data.verification === true ? "Site security verification required; it may not work inside Proxy" :
+        Number.isInteger(data.status) && data.status >= 400 && data.status <= 599 ? `Site returned HTTP ${data.status}` : null;
+      if (tab.documentError) addActivity(tab, tab.documentError, { level: "error", url: entry(tab).url });
+    }
+    if (data.stage === "script-error" || data.stage === "sandbox-error") tab.scriptError = true;
+    if (data.stage === "bootstrap" || data.stage === "loaded" || failed) {
+      tab.status = tab.documentError || (tab.scriptError ? "Page has script errors; functionality may be incomplete" : stages[data.stage]);
+    }
     if (data.stage === "loaded") tab.loading = false;
     try { addActivity(tab, stages[data.stage], { level: failed ? "error" : "info", url: typeof data.url === "string" ? data.url : entry(tab).url }); }
     catch { notice("Invalid loading metadata was ignored."); }
@@ -738,14 +782,19 @@ window.addEventListener("message", (event) => {
     try {
       const url = new URL(data.url);
       if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Invalid page address");
+      if (tab.route?.mode === "proxy" && url.origin !== tab.storageOrigin) {
+        navigate(url.href, tab, true);
+        return;
+      }
       entry(tab).url = url.href;
       entry(tab).title = typeof data.title === "string" && data.title.trim() ? data.title.slice(0, 160) : url.hostname;
       tab.title.textContent = entry(tab).title;
       tab.loading = false;
       tab.bridgeReady = true;
       clearTimeout(tab.loadTimer);
-      tab.status = typeof data.error === "string" ? data.error : "Document ready; finishing remaining assets";
-      addActivity(tab, data.error ? "Proxy returned an error page" : "Document parsed; page is interactive", { url: url.href, level: data.error ? "error" : "info" });
+      tab.documentError = typeof data.error === "string" ? data.error : tab.documentError;
+      tab.status = tab.documentError || (tab.scriptError ? "Page has script errors; functionality may be incomplete" : "Document parsed; finishing remaining assets");
+      addActivity(tab, tab.documentError ? tab.documentError : "Document parsed; site functionality is not verified", { url: url.href, level: tab.documentError ? "error" : "info" });
       if (typeof data.favicon === "string") {
         const favicon = new URL(data.favicon, location.href);
         if (favicon.origin === location.origin && favicon.pathname === "/api/proxy") tab.favicon.src = favicon.href;

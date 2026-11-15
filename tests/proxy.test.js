@@ -14,7 +14,21 @@ import {
 import { isBlocked } from "../proxy/filtering.js";
 import { fixtureResponse } from "./fixtures.js";
 import { MemoryCacheStorage } from "../frontend/memory-cache.js";
+import { siteStorage, validStorageEntries } from "../shared/site-storage.js";
 import { gzipSync, gunzipSync } from "node:zlib";
+
+test("isolated site storage bounds writes atomically and persists named-property logout deletion", () => {
+  const saved = [];
+  const { storage } = siteStorage([["token", "synthetic-token"]], (entries) => saved.push(entries));
+  assert.throws(() => storage.setItem("large", "x".repeat(1024 * 1024)), { name: "QuotaExceededError" });
+  assert.equal(storage.getItem("large"), null);
+  assert.equal(storage.getItem("token"), "synthetic-token");
+  delete storage.token;
+  assert.deepEqual(saved, [[]]);
+  assert.equal(storage.getItem("token"), null);
+  assert.equal(validStorageEntries([["token", "one"], ["token", "two"]]), false);
+  assert.equal(validStorageEntries([["token", { unsafe: true }]]), false);
+});
 
 test("document caches snapshot consumed responses and honor Vary and query matching", async () => {
   const storage = new MemoryCacheStorage();
@@ -650,6 +664,20 @@ test("CSS rewrites quoted URLs, imports, data URLs and external resources", () =
   const inline = rewriteHtml('<style>.a{background:url(/image.svg)}}</style><h1>Recoverable CSS</h1>', "https://example.com/", "https://example.com/");
   assert.match(inline, /url=https%3A%2F%2Fexample.com%2Fimage.svg/);
   assert.match(inline, /Recoverable CSS/);
+  const escaped = rewriteCss(String.raw`.a{background:url(hero%20\(9\).webp)}.b{background:url("line\20 \(1\).png")}.c{mask:url(\2f icons\2f icon.svg)}`, "https://example.com/assets/style.css");
+  assert.match(escaped, /url=https%3A%2F%2Fexample.com%2Fassets%2Fhero%2520%289%29.webp/);
+  assert.match(escaped, /url=https%3A%2F%2Fexample.com%2Fassets%2Fline%2520%281%29.png/);
+  assert.match(escaped, /url=https%3A%2F%2Fexample.com%2Ficons%2Ficon.svg/);
+});
+
+test("document bootstrap reports upstream HTTP failures and verification without caching them", async () => {
+  for (const [path, status, verification] of [["verification-page", 403, "1"], ["unavailable-page", 503, "0"]]) {
+    const result = await invoke(`https://fixture.example/${path}`);
+    assert.equal(result.statusCode, status);
+    assert.match(result.body.toString(), new RegExp(`data-response-status="${status}"`));
+    assert.match(result.body.toString(), new RegExp(`data-verification="${verification}"`));
+    assert.equal(result.headers["vercel-cdn-cache-control"], "no-store");
+  }
 });
 
 test("POST bodies and HEAD are preserved, with unsupported methods and compression/size limits surfaced", async () => {

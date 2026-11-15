@@ -5,6 +5,7 @@ import { parseModule, parseScript } from "meriyah";
 import { analyze } from "eslint-scope";
 import { proxyUrl, moduleUrl } from "../shared/proxy-url.js";
 import { mapSrcset } from "../shared/srcset.js";
+import { decodeCssUrl } from "../shared/css-url.js";
 
 function rewriteUrl(value, base, options) {
   if (!value.trim() || value.trim().startsWith("#")) return value;
@@ -97,7 +98,7 @@ export function rewriteCss(source, base, options = {}) {
       if (node.type !== "function" || node.value.toLowerCase() !== "url") return;
       const raw = valueParser.stringify(node.nodes).trim();
       const url = node.nodes.length === 1 && node.nodes[0].type === "string" ? node.nodes[0].value : raw;
-      node.nodes = [{ type: "string", quote: '"', value: rewriteUrl(url, base, { ...options, type }) }];
+      node.nodes = [{ type: "string", quote: '"', value: rewriteUrl(decodeCssUrl(url), base, { ...options, type }) }];
       return false;
     });
     return parsed.toString();
@@ -213,6 +214,8 @@ export function rewriteHtml(source, target, requestUrl, adblock = true, extra = 
   setAttr(bridge, "data-logging", extra.logging ? "1" : "0");
   setAttr(bridge, "data-cache", extra.cache === false ? "0" : "1");
   setAttr(bridge, "data-cache-version", extra.cacheVersion || "");
+  setAttr(bridge, "data-response-status", String(extra.responseStatus || 200));
+  setAttr(bridge, "data-verification", extra.verification ? "1" : "0");
   setAttr(bridge, "data-cookie-state", extra.cookieState || "");
   bridge.parentNode = head;
   head.childNodes.unshift(bridge);

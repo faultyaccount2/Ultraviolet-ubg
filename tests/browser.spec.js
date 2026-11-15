@@ -284,6 +284,121 @@ test("site scripts see their own routes and navigate without leaving the isolate
   expect(errors).toEqual([]);
 });
 
+test("escaped CSS asset URLs survive server and runtime rewriting", async ({ page }) => {
+  test.skip(production, "Deterministic CSS escape fixture.");
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
+  const requests = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/proxy" && url.searchParams.get("url")?.includes("escape=")) requests.push(url.searchParams.get("url"));
+  });
+  await frame.locator("body").evaluate(() => {
+    document.body.insertAdjacentHTML("beforeend", String.raw`<div style="width:20px;height:20px;background-image:url(/assets/image.svg?escape=\(html\))"></div>`);
+    const element = document.createElement("div");
+    element.style.cssText = String.raw`width:20px;height:20px;background-image:url(/assets/image.svg?escape=\(style\))`;
+    document.body.append(element);
+  });
+  await expect.poll(() => requests).toEqual(expect.arrayContaining([
+    "https://fixture.example/assets/image.svg?escape=(html)",
+    "https://fixture.example/assets/image.svg?escape=(style)",
+  ]));
+});
+
+test("loading diagnostics retain HTTP failures and sandbox errors after frame load", async ({ page }) => {
+  test.skip(production, "Deterministic document failure fixture.");
+  await page.goto("/");
+  let frame = await openTarget(page, "https://fixture.example/verification-page");
+  await expect(frame.getByRole("heading", { name: "Verification required" })).toBeVisible();
+  await expect(page.locator("#page-status")).toContainText("Site security verification required");
+  frame = await openTarget(page, "https://fixture.example/unavailable-page");
+  await expect(frame.getByRole("heading", { name: "Unavailable" })).toBeVisible();
+  await expect(page.locator("#page-status")).toHaveText("Site returned HTTP 503");
+  frame = await openTarget(page, fixture);
+  await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
+  await frame.locator("body").evaluate(() => {
+    dispatchEvent(new ErrorEvent("error", {
+      error: new DOMException("do-not-log-this-secret", "SecurityError"),
+      filename: "https://fixture.example/failing.js?token=do-not-log-this-secret",
+    }));
+    dispatchEvent(new Event("load"));
+  });
+  await expect(page.locator("#page-status")).toHaveText("Page has script errors; functionality may be incomplete");
+  await page.getByRole("button", { name: "Loading console", exact: true }).click();
+  await expect(page.locator("#console-list")).toContainText("A page script hit a sandbox security restriction");
+  await expect(page.locator("#console-list")).toContainText("https://fixture.example/failing.js");
+  expect(await page.locator("#console-list").innerText()).not.toContain("do-not-log-this-secret");
+  expect(await frame.locator("body").evaluate(() => {
+    try { return parent.document.title; } catch (error) { return error.name; }
+  })).toBe("SecurityError");
+});
+
+test("site login storage is restored before scripts, survives reloads and remains origin scoped", async ({ page }) => {
+  test.skip(production, "Synthetic login storage fixture; no real credentials.");
+  await page.goto("/");
+  let frame = await openTarget(page, "https://fixture.example/storage-page");
+  await expect(frame.locator("#stored-login")).toHaveText("signed out");
+  await frame.locator("body").evaluate(() => {
+    localStorage.token = "Bearer fixture-user";
+    localStorage.setItem("device", "fixture-device");
+    sessionStorage.setItem("session", "same tab");
+    globalThis.__bromineLocation.href = "/storage-page?after-login=1";
+  });
+  await expect(frame.locator("#stored-login")).toHaveText("Bearer fixture-user");
+  await expect(frame.locator("#stored-session")).toHaveText("same tab");
+  await expect(frame.locator("#stored-auth")).toHaveText("true");
+  expect(await frame.locator("body").evaluate(() => window.name)).toBe("");
+  expect(await frame.locator("body").evaluate(() => Object.keys(localStorage).sort())).toEqual(["device", "token"]);
+  const nativeReload = page.waitForResponse((response) =>
+    response.request().isNavigationRequest() && new URL(response.url()).pathname === "/api/proxy");
+  await frame.locator("body").evaluate(() => location.reload());
+  await nativeReload;
+  await expect(frame.locator("#stored-login")).toHaveText("Bearer fixture-user");
+  await expect(frame.locator("#stored-session")).toHaveText("same tab");
+  await page.getByRole("button", { name: "Duplicate current tab", exact: true }).click();
+  await expect(frame.locator("#stored-login")).toHaveText("Bearer fixture-user");
+  await expect(frame.locator("#stored-session")).toHaveText("new session");
+  await page.getByRole("tab", { selected: true }).getByRole("button", { name: "Close tab" }).click();
+  await expect(frame.locator("#stored-session")).toHaveText("same tab");
+  await page.reload();
+  frame = await openTarget(page, "https://fixture.example/storage-page");
+  await expect(frame.locator("#stored-login")).toHaveText("Bearer fixture-user");
+  await expect(frame.locator("#stored-auth")).toHaveText("true");
+  await expect(frame.locator("#stored-session")).toHaveText("new session");
+  expect(await frame.locator("body").evaluate(() => localStorage.getItem("bromine:settings"))).toBe(null);
+  frame = await openTarget(page, "https://fixture.example/storage-redirect");
+  await expect(page.locator("#address")).toHaveValue("https://www.google.com/storage-page");
+  await expect(frame.locator("#stored-login")).toHaveText("signed out");
+  expect(await frame.locator("body").evaluate(() => localStorage.getItem("device"))).toBe(null);
+  await frame.locator("body").evaluate(() => parent.postMessage({
+    type: "bromine:storage", requestUrl: "https://www.google.com/storage-page", origin: "https://fixture.example",
+    area: "local", entries: [["token", "forged"]],
+  }, "*"));
+  await expect(page.getByRole("alert")).toContainText("out-of-scope site storage update was rejected");
+  await frame.locator("body").evaluate(() => parent.postMessage({
+    type: "bromine:storage", requestUrl: "https://www.google.com/storage-page", origin: "https://www.google.com",
+    bridgeId: "incorrect-frame-capability", area: "local", entries: [["token", "forged"]],
+  }, "*"));
+  await page.getByRole("button", { name: "Reload", exact: true }).click();
+  await expect(frame.locator("#stored-login")).toHaveText("signed out");
+  frame = await openTarget(page, "https://fixture.example/storage-page");
+  await expect(frame.locator("#stored-login")).toHaveText("Bearer fixture-user");
+  await frame.locator("body").evaluate(() => {
+    delete localStorage.token;
+    globalThis.__bromineLocation.href = "/storage-page?logged-out=1";
+  });
+  await expect(frame.locator("#stored-login")).toHaveText("signed out");
+  await page.getByRole("button", { name: "Reload", exact: true }).click();
+  await expect(frame.locator("#stored-login")).toHaveText("signed out");
+  expect(await frame.locator("body").evaluate(() => localStorage.getItem("device"))).toBe("fixture-device");
+  await page.getByRole("button", { name: "Site routing", exact: true }).click();
+  await page.getByRole("button", { name: "Clear this site's saved storage", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("LocalStorage and SessionStorage were cleared");
+  await expect(frame.locator("#stored-login")).toHaveText("signed out");
+  expect(await frame.locator("body").evaluate(() => localStorage.getItem("device"))).toBe(null);
+});
+
 test("consent-style script type observers do not trigger a proxy mutation loop", async ({ page }) => {
   test.skip(production, "Deterministic consent-observer fixture.");
   await page.goto("/");

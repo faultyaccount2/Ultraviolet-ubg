@@ -19,6 +19,7 @@ export function fixtureResponse(url, options) {
   if (["duckduckgo.com", "www.google.com"].includes(url.hostname) && url.searchParams.has("q")) body = `<title>Search fixture</title><h1>Results for ${url.searchParams.get("q")}</h1>`;
   else if (url.pathname === "/") body = html;
   else if (url.pathname === "/redirect") { status = 302; headers.location = "/next?redirected=1"; body = ""; }
+  else if (url.pathname === "/storage-redirect") { status = 302; headers.location = "https://www.google.com/storage-page"; body = ""; }
   else if (url.pathname === "/private-redirect") { status = 302; headers.location = "http://127.0.0.1/"; body = ""; }
   else if (url.pathname === "/loop") { status = 302; headers.location = "/loop"; body = ""; }
   else if (url.pathname === "/next") body = `<title>Next page</title><h1>Next page</h1><p>${url.search}</p>`;
@@ -55,6 +56,21 @@ export function fixtureResponse(url, options) {
     body = `<svg xmlns="http://www.w3.org/2000/svg"><text>${++assetGeneration}</text></svg>`;
   }
   else if (url.pathname === "/failed-api") { status = 503; headers["content-type"] = "text/plain"; body = "private response body"; }
+  else if (url.pathname === "/verification-page") {
+    status = 403;
+    headers["cf-mitigated"] = "challenge";
+    body = "<title>Verification required</title><h1>Verification required</h1>";
+  }
+  else if (url.pathname === "/unavailable-page") { status = 503; body = "<title>Unavailable</title><h1>Unavailable</h1>"; }
+  else if (url.pathname === "/storage-page") body = `<title>Storage fixture</title><h1>Storage fixture</h1>
+    <p id="stored-login"></p><p id="stored-session"></p><p id="stored-auth"></p>
+    <script>
+      document.querySelector("#stored-login").textContent = localStorage.getItem("token") || "signed out";
+      document.querySelector("#stored-session").textContent = sessionStorage.getItem("session") || "new session";
+      const token = localStorage.getItem("token");
+      if (token) fetch("/authenticated-api", { headers: { Authorization: token } })
+        .then(response => response.json()).then(data => { document.querySelector("#stored-auth").textContent = String(data.authenticated); });
+    </script>`;
   else if (url.pathname === "/nested") body = "<title>Nested fixture</title><h1>Nested fixture</h1>";
   else if (url.pathname === "/get") body = `<title>GET result</title><h1>GET result</h1><p>${url.searchParams.get("q")}</p>`;
   else if (url.pathname === "/file.txt") {
