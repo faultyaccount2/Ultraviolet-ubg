@@ -44,6 +44,11 @@ export function fixtureResponse(url, options) {
     body = `<title>Cookie check</title><h1>Cookie check</h1><p id="stored-cookie">${options.headers.cookie || "(none)"}</p>`;
   }
   else if (url.pathname === "/cookie-echo") { headers["content-type"] = "text/plain"; body = options.headers.cookie || "(none)"; }
+  else if (url.pathname === "/authenticated-api") {
+    headers["content-type"] = "application/json";
+    if (options.headers.authorization !== "Bearer fixture-user") status = 401;
+    body = JSON.stringify({ authenticated: status === 200, method: options.method, body: options.body?.toString() || "" });
+  }
   else if (url.pathname === "/nested") body = "<title>Nested fixture</title><h1>Nested fixture</h1>";
   else if (url.pathname === "/get") body = `<title>GET result</title><h1>GET result</h1><p>${url.searchParams.get("q")}</p>`;
   else if (url.pathname === "/file.txt") {
@@ -76,7 +81,7 @@ export function fixtureResponse(url, options) {
     body = 'document.addEventListener("DOMContentLoaded",()=>{document.cookie="fixture=1";localStorage.setItem("fixture","isolated");document.getElementById("script-status").dataset.cache=("caches" in window&&window.caches)?"available":"unavailable";document.getElementById("script-status").textContent="Script loaded";fetch(new Request("/data?value=hello",{mode:"same-origin",credentials:"include",headers:{"X-SG-E":"fixture"}})).then(r=>r.text()).then(text=>document.getElementById("fetch-status").textContent=text);const xhr=new XMLHttpRequest();xhr.open("GET","/data?value=xhr");xhr.withCredentials=true;xhr.setRequestHeader("X-Fixture","1");xhr.onload=()=>{document.getElementById("script-status").dataset.xhr=xhr.responseText};xhr.send();const image=document.createElement("img");image.id="dynamic-image";image.src="/assets/image.svg?dynamic=1";document.body.append(image);const block=document.createElement("div");block.id="dynamic-html";block.innerHTML=\'<img src="/assets/image.svg?html=1" alt="Dynamic HTML">\';document.body.append(block);});';
   } else if (url.pathname === "/assets/worker.js") {
     headers["content-type"] = "application/javascript";
-    body = 'self.addEventListener("message",async()=>{const cache=await caches.open("worker-fixture");const response=await fetch(new Request("/post",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:"name=worker"}));const text=await response.text();await cache.put("/data?value=worker",new Response(text));self.postMessage({text:await(await cache.match("/data?value=worker")).text(),isCache:cache instanceof Cache,url:location.href,workerUrl:self.location.href});});';
+    body = 'self.addEventListener("message",async()=>{const cache=await caches.open("worker-fixture");const response=await fetch(new Request("/post",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:"name=worker"}));const text=await response.text();await cache.put("/data?value=worker",new Response(text));const authenticated=await(await fetch("/authenticated-api",{method:"PATCH",headers:{Authorization:"Bearer fixture-user","Content-Type":"application/json"},body:JSON.stringify({content:"worker"})})).json();self.postMessage({text:await(await cache.match("/data?value=worker")).text(),isCache:cache instanceof Cache,url:location.href,workerUrl:self.location.href,authenticated});});';
   } else if (url.pathname === "/route.js") {
     headers["content-type"] = "application/javascript";
     body = `const alias = document.defaultView;

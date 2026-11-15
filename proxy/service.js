@@ -21,6 +21,7 @@ const redirects = new Set([301, 302, 303, 307, 308]);
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const MAX_FORWARDED_HEADER_BYTES = 16 * 1024;
 const MAX_COOKIE_RESPONSE_BYTES = 16 * 1024;
+const allowedMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const forwardedHeaderNames = new Set([
   "x-youtube-client-name", "x-youtube-client-version", "x-youtube-bootstrap-logged-in",
   "x-youtube-page-label", "x-youtube-page-cl", "x-youtube-utc-offset", "x-youtube-device",
@@ -145,13 +146,13 @@ async function readBody(req) {
     let size = 0;
     for await (const chunk of req) {
       size += chunk.length;
-      if (size > MAX_REQUEST_BYTES) throw new ProxyError(413, "The POST body exceeds the 1 MB limit.");
+      if (size > MAX_REQUEST_BYTES) throw new ProxyError(413, "The request body exceeds the 1 MB limit.");
       chunks.push(chunk);
     }
     body = Buffer.concat(chunks);
   }
-  if (body.length > MAX_REQUEST_BYTES) throw new ProxyError(413, "The POST body exceeds the 1 MB limit.");
-  if (body.length && !supported) throw new ProxyError(415, "Only URL-encoded, JSON, XML and text POST bodies are supported. Multipart uploads are not supported.");
+  if (body.length > MAX_REQUEST_BYTES) throw new ProxyError(413, "The request body exceeds the 1 MB limit.");
+  if (body.length && !supported) throw new ProxyError(415, "Only URL-encoded, JSON, XML and text request bodies are supported. Multipart uploads are not supported.");
   return body;
 }
 
@@ -173,7 +174,7 @@ function headers(res, req) {
   res.setHeader("Access-Control-Allow-Origin", credentialedOrigin ? origin : "*");
   if (credentialedOrigin) res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", allowedMethods.join(", "));
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, X-Bromine-Site-Cookies");
   res.setHeader("Access-Control-Expose-Headers", "X-Bromine-Adblock, X-Bromine-Cacheable, X-Bromine-Cache, X-Bromine-Cookie-Changes, Content-Range, Accept-Ranges, Content-Length");
   res.setHeader("Timing-Allow-Origin", "*");
@@ -233,9 +234,9 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
         res.statusCode = 204;
         return res.end();
       }
-      if (!["GET", "HEAD", "POST"].includes(req.method)) {
-        res.setHeader("Allow", "GET, HEAD, POST, OPTIONS");
-        throw new ProxyError(405, "Only GET, HEAD and POST requests are supported.");
+      if (!allowedMethods.includes(req.method)) {
+        res.setHeader("Allow", allowedMethods.join(", "));
+        throw new ProxyError(405, "Only GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS requests are supported.");
       }
       const query = new URL(req.url, "https://proxy.example").searchParams;
       if (query.getAll("url").length !== 1) throw new ProxyError(400, "Supply exactly one HTTP(S) target using the url parameter.");
@@ -250,6 +251,16 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       const originHost = originUrl.hostname.toLowerCase().replace(/\.$/, "");
       const type = query.get("type") || "document";
       if (!requestTypes.has(type)) throw new ProxyError(400, "Invalid resource type.");
+      const siteAuthorization = req.headers["x-bromine-site-authorization"];
+      if (siteAuthorization !== undefined) {
+        if (typeof siteAuthorization !== "string" || !/^[\x20-\x7e]{1,8192}$/.test(siteAuthorization)) {
+          throw new ProxyError(400, "The site's authorization header is invalid or too large.");
+        }
+        if (type !== "xmlhttprequest" || initial.origin !== originUrl.origin ||
+            req.headers.origin !== "null" && !isApplicationOrigin(req)) {
+          throw new ProxyError(403, "Site authorization requires an isolated API request to the matching site.");
+        }
+      }
       const suffixes = await publicSuffixList();
       const secureApplicationCookie = true;
       const pendingCookieWrites = new Map();
@@ -282,7 +293,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       if (type === "subdocument") res.setHeader("Content-Security-Policy", isolatedDocumentPolicy);
       const signal = AbortSignal.any([AbortSignal.timeout(290000), disconnected.signal]);
       let method = req.method;
-      let body = method === "POST" ? await readBody(req) : undefined;
+      let body = ["POST", "PUT", "PATCH", "DELETE"].includes(method) ? await readBody(req) : undefined;
       let url = initial;
       let response;
       const cookieChanges = [];
@@ -309,6 +320,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
           outgoingHeaders[name] = value;
           forwardedHeaderBytes += bytes;
         }
+        if (siteAuthorization && url.origin === initial.origin) outgoingHeaders.authorization = siteAuthorization;
         if (clientCookies && type === "xmlhttprequest" && url.hostname === originHost) {
           siteCookies = storedSiteCookies(req, originHost, url.href, suffixes);
           const protectedCookies = new Set(siteCookies
@@ -367,8 +379,9 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
         response.stream?.destroy();
         if (count === 5) throw new ProxyError(502, "The site redirected too many times.");
         const destination = validateTarget(new URL(response.headers.location, url).href);
-        if (method === "POST" && [301, 302, 303].includes(response.status)) { method = "GET"; body = undefined; }
-        if (body && destination.origin !== url.origin) throw new ProxyError(502, "A cross-site redirect attempted to forward a POST body.");
+        if (response.status === 303 && method !== "HEAD" ||
+            method === "POST" && [301, 302].includes(response.status)) { method = "GET"; body = undefined; }
+        if (body?.length && destination.origin !== url.origin) throw new ProxyError(502, "A cross-site redirect attempted to forward a request body.");
         url = destination;
       }
       const contentType = response.headers["content-type"] || "application/octet-stream";
@@ -384,7 +397,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
       appendCookieWrites(res, pendingCookieWrites, secureApplicationCookie);
       if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
-      if (req.method === "GET" && response.status === 200 && !response.headers["set-cookie"] &&
+      if (req.method === "GET" && response.status === 200 && !siteAuthorization && !response.headers["set-cookie"] &&
           /(?:public|max-age=|immutable)/i.test(response.headers["cache-control"] || "") &&
           !/private|no-store/i.test(response.headers["cache-control"] || "")) res.setHeader("X-Bromine-Cacheable", "1");
       if (!rewriting) {

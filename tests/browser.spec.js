@@ -376,6 +376,7 @@ test("classic workers proxy fetch and cache responses without exposing bootstrap
   expect(response).toEqual({
     text: expect.stringContaining("name=worker"), isCache: true,
     url: "https://fixture.example/assets/worker.js", workerUrl: "https://fixture.example/assets/worker.js",
+    authenticated: { authenticated: true, method: "PATCH", body: '{"content":"worker"}' },
   });
 });
 
@@ -392,6 +393,37 @@ test("fetch preserves a Request body's method, headers and payload while proxyin
     return await (await fetch(request)).text();
   });
   expect(body).toContain("name=request-body");
+});
+
+test("authenticated site fetch and XHR preserve tokens and mutations without cross-site credential leakage", async ({ page }) => {
+  test.skip(production, "Synthetic authentication fixtures never use real account credentials.");
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  const result = await frame.locator("body").evaluate(async () => {
+    const headers = { Authorization: "Bearer fixture-user", "Content-Type": "application/json" };
+    const fetched = await (await fetch(new Request("/authenticated-api", {
+      method: "PATCH", headers, body: '{"content":"edited"}',
+    }))).json();
+    const xhr = await new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("DELETE", "/authenticated-api");
+      for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
+      request.onload = () => resolve(JSON.parse(request.responseText));
+      request.onerror = () => reject(new Error("Authenticated XHR failed."));
+      request.send('{"content":"deleted"}');
+    });
+    const forged = await fetch("/authenticated-api", { headers: { "X-Bromine-Site-Authorization": "Bearer fixture-user" } });
+    let crossOrigin;
+    try { await fetch("https://www.google.com/authenticated-api", { headers }); }
+    catch (error) { crossOrigin = error.name; }
+    return { fetched, xhr, forgedStatus: forged.status, crossOrigin };
+  });
+  expect(result).toEqual({
+    fetched: { authenticated: true, method: "PATCH", body: '{"content":"edited"}' },
+    xhr: { authenticated: true, method: "DELETE", body: '{"content":"deleted"}' },
+    forgedStatus: 401, crossOrigin: "SecurityError",
+  });
 });
 
 test("configured WebSocket relay forwards text through the real browser bridge", async ({ page }) => {
@@ -673,6 +705,21 @@ test("bounded public cache stores, hits and clears only Bromine resources", asyn
     return count;
   })).toBeGreaterThan(0);
   expect(await page.evaluate(async (url) => (await fetch(url)).headers.get("X-Bromine-Cache"), asset)).toBe("hit");
+  await page.getByRole("button", { name: "Close cache", exact: true }).click();
+  const frame = await openTarget(page, fixture);
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  const authenticated = await frame.locator("body").evaluate(() => new Request("/authenticated-api").url);
+  await page.evaluate(async (url) => {
+    const cache = await caches.open("bromine-cache-http-v1");
+    await cache.put(url, new Response("wrong cached user", { headers: { "X-Bromine-Stored": String(Date.now()) } }));
+  }, authenticated);
+  const privateResponse = await frame.locator("body").evaluate(async () => {
+    const response = await fetch("/authenticated-api", { headers: { Authorization: "Bearer fixture-user" } });
+    return { cache: response.headers.get("X-Bromine-Cache"), data: await response.json() };
+  });
+  expect(privateResponse).toEqual({ cache: null, data: { authenticated: true, method: "GET", body: "" } });
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Cache", exact: true }).click();
   await page.getByRole("button", { name: "Clear selected cache" }).click();
   await expect(page.locator("#cache-usage")).toContainText("0 resources");
 });

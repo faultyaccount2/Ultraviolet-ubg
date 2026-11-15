@@ -1,6 +1,6 @@
 import { proxyUrl, unproxyUrl, resourceUrl, moduleUrl } from "../shared/proxy-url.js";
 import { redactUrl } from "../shared/address.js";
-import { proxyRequest } from "../shared/proxy-request.js";
+import { proxyRequest, proxyAuthorization, siteAuthorization } from "../shared/proxy-request.js";
 import { mapSrcset } from "../shared/srcset.js";
 import {
   applySiteCookie, cookieDomainMatches, cookieMatches, decodeCookieState, documentCookie, encodeCookieState, normalizeSiteCookie,
@@ -354,6 +354,7 @@ window.fetch = async (input, options) => {
   const request = await proxyRequest(input, options, resource, NativeRequest);
   const headers = new NativeHeaders(request.headers);
   const targetUrl = unproxyUrl(request.url, proxyOrigin);
+  proxyAuthorization(headers, targetUrl, pageUrl);
   const includeSiteCookies = credentials !== "omit" && new URL(targetUrl).hostname === new URL(pageUrl).hostname;
   const siteCookies = includeSiteCookies ? requestCookies(targetUrl) : [];
   if (includeSiteCookies) headers.set("X-Bromine-Site-Cookies", encodeCookieState(siteCookies));
@@ -375,7 +376,11 @@ XMLHttpRequest.prototype.open = function (method, url, ...args) {
 };
 const nativeSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
 XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
-  if (String(name).toLowerCase() === "x-bromine-site-cookies") return;
+  const lower = String(name).toLowerCase();
+  if (["x-bromine-site-cookies", "x-bromine-site-authorization"].includes(lower)) return;
+  if (lower === "authorization") {
+    return nativeSetRequestHeader.call(this, "X-Bromine-Site-Authorization", siteAuthorization(value, xhrTargets.get(this), pageUrl));
+  }
   return nativeSetRequestHeader.call(this, name, value);
 };
 const nativeSend = XMLHttpRequest.prototype.send;

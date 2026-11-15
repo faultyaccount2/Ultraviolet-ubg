@@ -77,7 +77,8 @@ async function cachedFetch(request, event) {
   await initialize();
   const url = new URL(request.url);
   const target = new URL(url.searchParams.get("url"));
-  if (!config.enabled || url.searchParams.get("cache") === "0" || target.search || request.headers.has("range")) return fetch(request);
+  if (!config.enabled || url.searchParams.get("cache") === "0" || target.search ||
+      request.headers.has("range") || request.headers.has("x-bromine-site-authorization")) return fetch(request);
   const type = url.searchParams.get("type");
   const category = type === "image" ? "image" : type === "font" ? "font" : type === "media" ? "media" : "http";
   const cache = await caches.open(`${prefix}${category}-v1`);

@@ -361,6 +361,71 @@ test("the gateway forwards only bounded site API headers and supplies the proxie
   assert.equal(outgoing.options.headers["content-type"], "application/json+protobuf");
 });
 
+test("site authorization and mutation bodies reach only matching API requests without enabling public caching", async () => {
+  for (const method of ["GET", "PUT", "PATCH", "DELETE"]) {
+    let outgoing;
+    const body = method === "GET" ? undefined : '{"content":"fixture message"}';
+    const result = await invoke("https://fixture.example/authenticated-api", {
+      method, body, type: "xmlhttprequest", origin: "https://fixture.example/",
+      requestHeaders: {
+        origin: "null", authorization: "Bearer app-secret",
+        "x-bromine-site-authorization": "Bearer fixture-user", "content-type": "application/json",
+      },
+      send: (url, options) => { outgoing = options; return fixtureResponse(url, options); },
+    });
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(JSON.parse(result.body), { authenticated: true, method, body: body || "" });
+    assert.equal(outgoing.headers.authorization, "Bearer fixture-user");
+    assert.equal(outgoing.headers["x-bromine-site-authorization"], undefined);
+    assert.equal(result.headers["x-bromine-cacheable"], undefined);
+  }
+  for (const [type, origin, authorization, status] of [
+    ["document", "https://fixture.example/", "Bearer fixture-user", 403],
+    ["xmlhttprequest", "https://www.google.com/", "Bearer fixture-user", 403],
+    ["xmlhttprequest", "https://fixture.example/", "x".repeat(8193), 400],
+    ["xmlhttprequest", "https://fixture.example/", "invalid\nheader", 400],
+  ]) {
+    const result = await invoke("https://fixture.example/authenticated-api", {
+      type, origin, requestHeaders: { origin: "null", "x-bromine-site-authorization": authorization },
+      send: () => { assert.fail("Invalid site authorization reached the transport."); },
+    });
+    assert.equal(result.statusCode, status);
+  }
+});
+
+test("redirects strip site authorization across origins and preserve mutation semantics", async () => {
+  for (const crossOrigin of [false, true]) {
+    let authorization;
+    const result = await invoke("https://fixture.example/redirect", {
+      type: "xmlhttprequest", origin: "https://fixture.example/",
+      requestHeaders: { origin: "null", "x-bromine-site-authorization": "Bearer fixture-user" },
+      send: (url, options) => {
+        if (url.pathname === "/redirect") return {
+          status: 302, headers: { location: crossOrigin ? "https://www.google.com/next" : "/next" }, body: Buffer.alloc(0),
+        };
+        authorization = options.headers.authorization;
+        return fixtureResponse(url, options);
+      },
+    });
+    assert.equal(result.statusCode, 200);
+    assert.equal(authorization, crossOrigin ? undefined : "Bearer fixture-user");
+  }
+  for (const redirect of [303, 307]) {
+    let outgoing;
+    const result = await invoke("https://fixture.example/redirect", {
+      method: "PATCH", body: '{"content":"updated"}', requestHeaders: { "content-type": "application/json" },
+      send: (url, options) => {
+        if (url.pathname === "/redirect") return { status: redirect, headers: { location: "/next" }, body: Buffer.alloc(0) };
+        outgoing = options;
+        return fixtureResponse(url, options);
+      },
+    });
+    assert.equal(result.statusCode, 200);
+    assert.equal(outgoing.method, redirect === 303 ? "GET" : "PATCH");
+    assert.equal(outgoing.body?.toString(), redirect === 303 ? undefined : '{"content":"updated"}');
+  }
+});
+
 test("compressed JSON POST bodies retain their content encoding and raw bytes", async () => {
   const body = gzipSync(Buffer.from('{"search":"cats"}'));
   let outgoing;
@@ -532,7 +597,7 @@ test("POST bodies and HEAD are preserved, with unsupported methods and compressi
   assert.match(post.body.toString(), /name=Bromine/);
   const head = await invoke("https://fixture.example/", { method: "HEAD" });
   assert.equal(head.statusCode, 200); assert.equal(head.body.length, 0);
-  const rejected = await invoke("https://fixture.example/", { method: "DELETE" });
+  const rejected = await invoke("https://fixture.example/", { method: "TRACE" });
   assert.equal(rejected.statusCode, 405);
   const multipart = await invoke("https://fixture.example/post", { method: "POST", body: "a", requestHeaders: { "content-type": "multipart/form-data" } });
   assert.equal(multipart.statusCode, 415);

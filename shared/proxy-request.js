@@ -1,5 +1,19 @@
 const MAX_REQUEST_BYTES = 1024 * 1024;
 
+export function siteAuthorization(value, target, origin) {
+  if (!target || new URL(target).origin !== new URL(origin).origin) {
+    throw new DOMException("Authenticated requests to a different site are not supported.", "SecurityError");
+  }
+  return value;
+}
+
+export function proxyAuthorization(headers, target, origin) {
+  const authorization = headers.get("Authorization");
+  headers.delete("Authorization");
+  headers.delete("X-Bromine-Site-Authorization");
+  if (authorization) headers.set("X-Bromine-Site-Authorization", siteAuthorization(authorization, target, origin));
+}
+
 async function copyBody(request) {
   if (!request.body) return null;
   const reader = request.body.getReader();
@@ -12,7 +26,7 @@ async function copyBody(request) {
       size += value.byteLength;
       if (size > MAX_REQUEST_BYTES) {
         await reader.cancel();
-        throw new TypeError("Proxied POST bodies are limited to 1 MB.");
+        throw new TypeError("Proxied request bodies are limited to 1 MB.");
       }
       chunks.push(value);
     }

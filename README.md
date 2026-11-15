@@ -56,7 +56,7 @@ uses system fonts instead of the missing, obfuscated Switzer font.
 ## HTTP(S) compatibility boundary
 
 This is a **web proxy, not a VPN**. Public HTTP/HTTPS destinations on their
-standard ports are accepted. It handles GET, HEAD, basic POST bodies,
+standard ports are accepted. It handles GET, HEAD, POST, PUT, PATCH and DELETE,
 validated redirects, HTML/CSS URLs, images, fonts, classic scripts, relative
 and absolute resources, query strings, fragments and ordinary forms.
 Programmatic `form.submit()` calls use the same original-target routing as
@@ -82,6 +82,10 @@ gzip/deflate/Brotli request encodings, XML API payloads and JSON bodies labeled
 request limit. Proxied resources use credentialed CORS to support the
 browser-local site cookie jar; application credentials are never forwarded to
 upstream sites.
+Site-supplied Authorization headers from fetch/XHR (including classic workers)
+travel in a separate header, only for API requests to the page's exact origin.
+They are never sent on cross-origin redirects or stored in the public cache;
+ambient application Authorization headers remain stripped.
 Raw request streams are read without invoking the deployment platform's lazy
 JSON parser, preserving compressed JSON API requests such as YouTube search.
 Same-site History API state changes keep the proxy URL and app address bar in
