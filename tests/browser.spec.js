@@ -952,6 +952,35 @@ test("legacy disabled cache settings cannot disable public asset caching or rese
   }
 });
 
+test("native browser caching reuses public assets inside opaque frames and site clearing fetches a fresh version", async ({ page }) => {
+  test.skip(production, "Deterministic opaque-frame cache fixture.");
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  const loadImage = async () => {
+    const response = page.waitForResponse((response) =>
+      new URL(response.url()).searchParams.get("url") === "https://fixture.example/assets/cached.svg?opaque=1");
+    await frame.locator("body").evaluate(() => {
+      const image = document.createElement("img");
+      image.src = "/assets/cached.svg?opaque=1";
+      document.body.append(image);
+    });
+    return (await response).text();
+  };
+  await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
+  const cold = await loadImage();
+  await page.getByRole("button", { name: "Reload", exact: true }).click();
+  await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
+  expect(await loadImage()).toBe(cold);
+  await page.getByRole("button", { name: "Loading console", exact: true }).click();
+  await expect(page.locator("#console-list")).toContainText("CACHE HIT");
+  await page.getByRole("button", { name: "Close loading console", exact: true }).click();
+  await page.getByRole("button", { name: "Clear current site cache", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Current site cache cleared");
+  await page.getByRole("button", { name: "Reload", exact: true }).click();
+  await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
+  expect(await loadImage()).not.toBe(cold);
+});
+
 test("bounded public cache stores, hits and clears only Bromine resources", async ({ page }) => {
   test.skip(production, "Public fixture caching is verified locally; no production test fixtures.");
   await page.goto("/");

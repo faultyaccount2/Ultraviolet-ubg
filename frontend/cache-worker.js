@@ -93,7 +93,8 @@ async function cachedFetch(request, event) {
     event.waitUntil(mutate(() => cache.put(request, copy)));
     return response;
   }
-  const response = await fetch(request);
+  // Do not restart CacheStorage freshness from an older browser HTTP-cache copy.
+  const response = await fetch(request, { cache: "no-store" });
   const age = Math.max(0, Number(response.headers.get("Age") || 0));
   const ttl = Math.min(900, Number(response.headers.get("X-Bromine-Cache-Ttl")) - age);
   const expires = Date.now() + ttl * 1000;

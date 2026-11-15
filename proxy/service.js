@@ -419,6 +419,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
         if (!cacheable) return;
         res.setHeader("X-Bromine-Cacheable", "1");
         res.setHeader("X-Bromine-Cache-Ttl", String(ttl));
+        res.setHeader("Cache-Control", `private, max-age=${Math.floor(ttl)}`);
         res.setHeader("Vercel-CDN-Cache-Control", `public, s-maxage=${Math.floor(ttl)}`);
         const vary = response.headers.vary ? `, ${response.headers.vary}` : "";
         res.setHeader("Vary", `Origin, Accept, Accept-Encoding, Accept-Language, User-Agent${vary}`);

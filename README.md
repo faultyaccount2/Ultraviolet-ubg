@@ -187,12 +187,18 @@ freshness cap and credential exclusions. Pages, API calls and downloads remain
 `no-store`. Asset responses vary by origin, accepted content/language, user agent
 and upstream Vary headers. Clearing cache advances a browser-local asset version,
 so reloading requests fresh URLs, including CDN assets used by that page.
-The size setting applies to browser CacheStorage, not Vercel's edge storage;
+The size setting applies to browser CacheStorage, not native HTTP caching or Vercel's edge storage;
 old public edge versions expire naturally rather than being globally purged.
 Large eligible rewritten public assets are gzip-compressed before leaving the
 function when the client accepts gzip. This also lets compressible bundles
 larger than Vercel's 10 MB edge-cache response limit fit into that cache; the
 CDN's later automatic compression alone does not solve the size limit.
+Eligible public assets also carry a private browser HTTP-cache lifetime, so
+opaque frames can reuse fresh files without another edge request. Other
+downstream shared caches cannot store them. Service-worker CacheStorage fetches
+bypass the browser HTTP cache to avoid restarting freshness from an older copy.
+Clearing a site's cache changes its asset version for both native and edge
+caching; old entries expire naturally.
 
 Request logging defaults on for new settings, remains optional, is transient and limited to 200
 metadata records per tab. Sensitive URL parameters are redacted from

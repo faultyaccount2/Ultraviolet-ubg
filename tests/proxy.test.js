@@ -461,6 +461,7 @@ test("public asset cache eligibility respects origin freshness, sensitive querie
     } });
     assert.equal(result.headers["x-bromine-cache-ttl"], ttl);
     assert.equal(result.headers["x-bromine-cacheable"], ttl ? "1" : undefined);
+    assert.equal(result.headers["cache-control"], ttl ? `private, max-age=${ttl}` : "no-store");
     assert.equal(result.headers["vercel-cdn-cache-control"], ttl ? `public, s-maxage=${ttl}` : "no-store");
   }
 });

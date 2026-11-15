@@ -612,7 +612,8 @@ window.addEventListener("message", (event) => {
       if (["fetch", "xmlhttprequest"].includes(entry.initiatorType) || !entry.name.includes("/api/proxy?")) continue;
       const url = new URL(entry.name);
       send({ type: "bromine:request", url: redactUrl(unproxyUrl(entry.name, proxyOrigin)), method: "GET", status: entry.responseStatus || 0,
-        resourceType: url.searchParams.get("type") || entry.initiatorType, duration: entry.duration, size: entry.encodedBodySize, blocked: false });
+        resourceType: url.searchParams.get("type") || entry.initiatorType, duration: entry.duration, size: entry.encodedBodySize,
+        cache: entry.transferSize === 0 && entry.decodedBodySize > 0 ? "hit" : null, blocked: false });
     }
   });
   observer.observe({ type: "resource", buffered: true });
