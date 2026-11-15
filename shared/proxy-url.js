@@ -1,4 +1,4 @@
-export const proxyParameters = new Set(["url", "adblock", "origin", "type", "logging", "cache", "module"]);
+export const proxyParameters = new Set(["url", "adblock", "origin", "type", "logging", "cache", "cacheVersion", "module"]);
 
 export function proxyUrl(value, options = {}) {
   const url = new URL(value);
@@ -10,6 +10,7 @@ export function proxyUrl(value, options = {}) {
   if (options.type) query.set("type", options.type);
   if (options.logging !== undefined) query.set("logging", options.logging ? "1" : "0");
   if (options.cache !== undefined) query.set("cache", options.cache ? "1" : "0");
+  if (options.cacheVersion) query.set("cacheVersion", options.cacheVersion);
   if (options.module) query.set("module", "1");
   return `/api/proxy?${query}${fragment}`;
 }

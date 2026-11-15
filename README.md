@@ -167,6 +167,14 @@ authenticated/private responses, sensitive query strings, and downloads are
 excluded. Individual resources over 4 MB are
 streamed normally but not duplicated into this cache. Clear all/categories
 or the current site's cache without clearing unrelated authenticated storage.
+Opaque proxy frames cannot rely on an app service worker controlling their
+subresources. Eligible public assets also use Vercel's edge cache with the same
+freshness cap and credential exclusions. Pages, API calls and downloads remain
+`no-store`. Asset responses vary by origin, accepted content/language, user agent
+and upstream Vary headers. Clearing cache advances a browser-local asset version,
+so reloading requests fresh URLs, including CDN assets used by that page.
+The size setting applies to browser CacheStorage, not Vercel's edge storage;
+old public edge versions expire naturally rather than being globally purged.
 
 Request logging defaults on for new settings, remains optional, is transient and limited to 200
 metadata records per tab. Sensitive URL parameters are redacted from

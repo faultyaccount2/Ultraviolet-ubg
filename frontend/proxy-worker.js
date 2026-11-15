@@ -15,16 +15,18 @@ const siteSelf = new Proxy(self, {
 Object.defineProperties(self, {
   __bromineLocation: { value: siteLocation },
   __bromineLocationObject: { value: (object) => object === self ? siteSelf : object },
-  __bromineModuleUrl: { value: (value, scriptUrl) => moduleUrl(value, scriptUrl, config.proxyOrigin, { ...config, type: "script", module: true }) },
+  __bromineModuleUrl: { value: (value, scriptUrl) => moduleUrl(value, scriptUrl, config.proxyOrigin, { ...config, origin: new URL(config.origin).origin + "/", type: "script", module: true }) },
 });
 const resource = (value, type = "xmlhttprequest") => {
   const url = new URL(String(value), config.url);
+  const origin = type === "script" ? new URL(config.url).origin + "/" : config.url;
   if (url.origin === config.proxyOrigin && url.pathname === "/api/proxy" && url.searchParams.has("url")) {
-    url.searchParams.set("origin", config.url);
+    url.searchParams.set("origin", origin);
     url.searchParams.set("type", type);
+    if (config.cacheVersion) url.searchParams.set("cacheVersion", config.cacheVersion);
     return url.href;
   }
-  return resourceUrl(String(value), config.url, config.proxyOrigin, { ...config, origin: config.url, type });
+  return resourceUrl(String(value), config.url, config.proxyOrigin, { ...config, origin, type });
 };
 Object.defineProperties(self, {
   caches: { configurable: true, value: new MemoryCacheStorage() },

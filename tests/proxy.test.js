@@ -146,8 +146,8 @@ test("mixed DNS answers are rejected and the socket lookup stays pinned", async 
   });
 });
 
-async function invoke(target, { method = "GET", body, lazyBody = false, type, origin, requestHeaders = {}, send = fixtureResponse, resolve = async () => [{ address: "93.184.216.34", family: 4 }], blocked = async () => false } = {}) {
-  const req = { method, url: proxyUrl(target, { type, origin }), headers: requestHeaders, body };
+async function invoke(target, { method = "GET", body, lazyBody = false, type, origin, cacheVersion, requestHeaders = {}, send = fixtureResponse, resolve = async () => [{ address: "93.184.216.34", family: 4 }], blocked = async () => false } = {}) {
+  const req = { method, url: proxyUrl(target, { type, origin, cacheVersion }), headers: requestHeaders, body };
   if (lazyBody) {
     Object.defineProperty(req, "body", { get() { throw new Error("Invalid JSON"); } });
     req[Symbol.asyncIterator] = async function* () { yield body; };
@@ -447,7 +447,28 @@ test("public asset cache eligibility respects origin freshness, sensitive querie
     } });
     assert.equal(result.headers["x-bromine-cache-ttl"], ttl);
     assert.equal(result.headers["x-bromine-cacheable"], ttl ? "1" : undefined);
+    assert.equal(result.headers["vercel-cdn-cache-control"], ttl ? `public, s-maxage=${ttl}` : "no-store");
   }
+});
+
+test("cache versions stay inside proxy metadata and invalid script responses cannot enter the edge cache", async () => {
+  const target = "https://fixture.example/assets/versioned.js";
+  const result = await invoke(target, {
+    type: "script", cacheVersion: "123.456", send: (url) => {
+      assert.equal(url.href, target);
+      return { status: 200, headers: { "content-type": "application/javascript", "cache-control": "max-age=60" }, body: Buffer.from('import "./dependency.js";') };
+    },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.match(result.body.toString(), /cacheVersion=123\.456/);
+  assert.equal(result.headers["vercel-cdn-cache-control"], "public, s-maxage=60");
+  const rejected = await invoke(target, {
+    type: "script", send: () => ({ status: 200, headers: { "content-type": "application/javascript", "cache-control": "max-age=60" }, body: Buffer.from("location=(") }),
+  });
+  assert.equal(rejected.statusCode, 502);
+  assert.equal(rejected.headers["vercel-cdn-cache-control"], "no-store");
+  const invalid = await invoke(target, { cacheVersion: "invalid/version" });
+  assert.equal(invalid.statusCode, 400);
 });
 
 test("compressed upstream scripts are decoded for rewriting while byte ranges request identity encoding", async () => {

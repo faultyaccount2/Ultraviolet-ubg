@@ -61,8 +61,10 @@ self.addEventListener("message", (event) => {
       if (action === "clear") {
         await mutations;
         for (const row of await records()) {
-          const hostname = new URL(new URL(row.request.url).searchParams.get("url")).hostname;
-          if (event.data.site && hostname !== event.data.site) continue;
+          const parameters = new URL(row.request.url).searchParams;
+          const hostname = new URL(parameters.get("url")).hostname;
+          const originHost = parameters.get("origin") ? new URL(parameters.get("origin")).hostname : hostname;
+          if (event.data.site && hostname !== event.data.site && originHost !== event.data.site) continue;
           if (event.data.category && row.name !== `${prefix}${event.data.category}-v1`) continue;
           await (await caches.open(row.name)).delete(row.request);
         }
@@ -92,7 +94,8 @@ async function cachedFetch(request, event) {
     return response;
   }
   const response = await fetch(request);
-  const ttl = Math.min(900, Number(response.headers.get("X-Bromine-Cache-Ttl")));
+  const age = Math.max(0, Number(response.headers.get("Age") || 0));
+  const ttl = Math.min(900, Number(response.headers.get("X-Bromine-Cache-Ttl")) - age);
   const expires = Date.now() + ttl * 1000;
   if (response.status === 200 && response.headers.get("X-Bromine-Cacheable") === "1" && ttl > 0) {
     const copy = response.clone();

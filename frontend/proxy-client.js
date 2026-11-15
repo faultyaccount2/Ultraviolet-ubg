@@ -24,6 +24,7 @@ const requestUrl = initialUrl(script.dataset.request);
 const adblock = script.dataset.adblock !== "0";
 let logging = script.dataset.logging === "1";
 const cache = script.dataset.cache !== "0";
+const cacheVersion = script.dataset.cacheVersion || "";
 const proxyOrigin = new URL(location.href).origin;
 let cookies = decodeCookieState(script.dataset.cookieState || "");
 // Site DOM snapshots must not clone or reload the proxy's bootstrap.
@@ -57,20 +58,22 @@ Object.defineProperties(document, {
 function resource(value, type = "xmlhttprequest", module = false) {
   let url;
   const pageContext = new URL(pageUrl);
+  if (["script", "stylesheet", "image", "font", "media"].includes(type)) pageContext.pathname = "/";
   pageContext.search = "";
   pageContext.hash = "";
-  try { url = new URL(String(value), base); } catch { return resourceUrl(value, base, proxyOrigin, { adblock, origin: pageContext.href, type, logging, cache }); }
+  try { url = new URL(String(value), base); } catch { return resourceUrl(value, base, proxyOrigin, { adblock, origin: pageContext.href, type, logging, cache, cacheVersion }); }
   if (url.origin === proxyOrigin && url.pathname === "/api/proxy" && url.searchParams.has("url")) {
     url.searchParams.set("origin", pageContext.href);
     url.searchParams.set("type", type);
     if (module) url.searchParams.set("module", "1");
     else url.searchParams.delete("module");
+    if (cacheVersion) url.searchParams.set("cacheVersion", cacheVersion);
     return url.href;
   }
-  return resourceUrl(value, base, proxyOrigin, { adblock, origin: pageContext.href, type, logging, cache, module });
+  return resourceUrl(value, base, proxyOrigin, { adblock, origin: pageContext.href, type, logging, cache, cacheVersion, module });
 }
 Object.defineProperty(globalThis, "__bromineModuleUrl", {
-  value: (value, scriptUrl) => moduleUrl(value, scriptUrl, proxyOrigin, { adblock, origin: pageUrl, logging, cache }),
+  value: (value, scriptUrl) => moduleUrl(value, scriptUrl, proxyOrigin, { adblock, origin: new URL(pageUrl).origin + "/", logging, cache, cacheVersion }),
 });
 function originalUrl(value) {
   return unproxyUrl(resource(value), proxyOrigin);
@@ -431,7 +434,7 @@ window.Worker = class ProxyWorker extends NativeWorker {
       return;
     }
     if (options.type === "module") throw new DOMException("Module workers are not supported by this proxy.", "NotSupportedError");
-    const config = { url, proxyOrigin, adblock, origin: target, logging, cache, cookies: cookies.filter((cookie) => !cookie.httpOnly) };
+    const config = { url, proxyOrigin, adblock, origin: target, logging, cache, cacheVersion, cookies: cookies.filter((cookie) => !cookie.httpOnly) };
     const blob = new Blob([`self.BROMINE_WORKER_CONFIG=${JSON.stringify(config)};`, globalThis.BROMINE_WORKER_SOURCE], { type: "text/javascript" });
     const bootstrap = URL.createObjectURL(blob);
     try { super(bootstrap, options); }
@@ -574,7 +577,7 @@ function routeForm(form, submitter) {
     else send({ type: "bromine:navigate", url: url.href });
     return true;
   }
-  form.action = proxyOrigin + proxyUrl(url.href, { adblock, origin: new URL(pageUrl).origin, type: "document", logging, cache });
+  form.action = proxyOrigin + proxyUrl(url.href, { adblock, origin: new URL(pageUrl).origin, type: "document", logging, cache, cacheVersion });
   send({ type: "bromine:form", url: url.href });
   return false;
 }

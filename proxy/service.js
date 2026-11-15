@@ -165,6 +165,7 @@ function textBody(body, contentType) {
 
 function headers(res, req) {
   res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Vercel-CDN-Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
   const origin = req.headers.origin;
@@ -252,6 +253,8 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       const originHost = originUrl.hostname.toLowerCase().replace(/\.$/, "");
       const type = query.get("type") || "document";
       if (!requestTypes.has(type)) throw new ProxyError(400, "Invalid resource type.");
+      const cacheVersion = query.get("cacheVersion") || "";
+      if (cacheVersion && !/^[a-zA-Z0-9.-]{1,80}$/.test(cacheVersion)) throw new ProxyError(400, "Invalid cache version.");
       const siteAuthorization = req.headers["x-bromine-site-authorization"];
       if (siteAuthorization !== undefined) {
         if (typeof siteAuthorization !== "string" || !/^[\x20-\x7e]{1,8192}$/.test(siteAuthorization)) {
@@ -405,18 +408,24 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       const age = Number(response.headers.age || 0);
       const ttl = Math.min(900, maxAge - age);
       const sensitiveQuery = [...url.searchParams.keys()].some((key) => /auth|password|passwd|token|key|secret|session|signature|^code$/i.test(key));
-      if (req.method === "GET" && cacheableTypes.has(type) && response.status === 200 &&
+      const cacheable = req.method === "GET" && !req.headers.range && query.get("cache") !== "0" && cacheableTypes.has(type) && response.status === 200 &&
           !credentialedRequest && !siteAuthorization && !response.headers["set-cookie"] && !sensitiveQuery &&
           ttl > 0 && !/private|no-store|no-cache/i.test(cacheControl) &&
-          !/(?:^|,)\s*(?:\*|cookie|authorization)\s*(?:,|$)/i.test(response.headers.vary || "")) {
+          !/(?:^|,)\s*(?:\*|cookie|authorization)\s*(?:,|$)/i.test(response.headers.vary || "");
+      const cacheHeaders = () => {
+        if (!cacheable) return;
         res.setHeader("X-Bromine-Cacheable", "1");
         res.setHeader("X-Bromine-Cache-Ttl", String(ttl));
-      }
+        res.setHeader("Vercel-CDN-Cache-Control", `public, s-maxage=${Math.floor(ttl)}`);
+        const vary = response.headers.vary ? `, ${response.headers.vary}` : "";
+        res.setHeader("Vary", `Origin, Accept, Accept-Language, User-Agent${vary}`);
+      };
       if (!rewriting) {
         res.setHeader("Content-Type", contentType);
         if (response.headers["content-encoding"]) res.setHeader("Content-Encoding", response.headers["content-encoding"]);
         if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
         res.statusCode = response.status;
+        cacheHeaders();
         if (req.method === "HEAD") { response.stream?.resume(); return res.end(); }
         if (typeof res.write === "function") {
           res.flushHeaders?.();
@@ -428,21 +437,22 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       let output = await decodeBody(response);
       if (req.method !== "HEAD" && response.status !== 206 && /^(?:text\/html|application\/xhtml\+xml)(?:;|$)/i.test(contentType)) {
         output = Buffer.from(rewriteHtml(textBody(output, contentType), url.href + new URL(raw).hash, requested, adblock, {
-          logging: query.get("logging") === "1", cache: query.get("cache") !== "0",
+          logging: query.get("logging") === "1", cache: query.get("cache") !== "0", cacheVersion,
           cookieState: isDocumentNavigation && url.hostname === originHost ?
             cookieStateHeader(siteCookies.filter((cookie) => !cookie.httpOnly && cookieMatches(cookie, url.href, originHost))) : "",
         }));
         res.setHeader("Content-Type", "text/html; charset=utf-8");
       } else if (req.method !== "HEAD" && response.status !== 206 && /^text\/css(?:;|$)/i.test(contentType)) {
-        output = Buffer.from(rewriteCss(textBody(output, contentType), url.href, { adblock, origin, logging: query.get("logging") === "1", cache: query.get("cache") !== "0" }));
+        output = Buffer.from(rewriteCss(textBody(output, contentType), url.href, { adblock, origin, logging: query.get("logging") === "1", cache: query.get("cache") !== "0", cacheVersion }));
         res.setHeader("Content-Type", "text/css; charset=utf-8");
       } else if (isScript) {
         output = Buffer.from(rewriteJavaScript(textBody(output, contentType), url.href + new URL(raw).hash, {
-          adblock, origin, logging: query.get("logging") === "1", cache: query.get("cache") !== "0", module: query.get("module") === "1",
+          adblock, origin, logging: query.get("logging") === "1", cache: query.get("cache") !== "0", cacheVersion, module: query.get("module") === "1",
         }));
         res.setHeader("Content-Type", "text/javascript; charset=utf-8");
       } else res.setHeader("Content-Type", contentType);
       res.statusCode = response.status;
+      cacheHeaders();
       if (typeof res.write === "function") {
         res.flushHeaders?.();
         return await pipeline(Readable.from((function* () {

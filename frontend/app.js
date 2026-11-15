@@ -40,8 +40,10 @@ function readStore(name, fallback, valid) {
 function writeStore(name, value) {
   try {
     localStorage.setItem(name, JSON.stringify(value));
+    return true;
   } catch {
     notice("Browser storage is unavailable. Changes will not persist.");
+    return false;
   }
 }
 
@@ -82,6 +84,20 @@ if (settings.engine === "bing") {
 }
 const sites = readStore("bromine:sites", {}, (value) => value && !Array.isArray(value) && typeof value === "object" &&
   Object.keys(value).length <= 500 && Object.values(value).every((site) => site && ["automatic", "direct", "proxy"].includes(site.mode) && typeof site.adblock === "boolean" && typeof site.cache === "boolean"));
+const cacheVersions = readStore("bromine:cache-versions", { global: 0, sites: {} }, (value) => value &&
+  Number.isSafeInteger(value.global) && value.global >= 0 && value.sites && typeof value.sites === "object" &&
+  !Array.isArray(value.sites) && Object.keys(value.sites).length <= 500 &&
+  Object.values(value.sites).every((version) => Number.isSafeInteger(version) && version >= 0));
+function cacheVersionFor(url) {
+  return `${cacheVersions.global}.${cacheVersions.sites[new URL(url).hostname] || 0}`;
+}
+function invalidateAssetVersion(site) {
+  if (site) {
+    if (!Object.hasOwn(cacheVersions.sites, site) && Object.keys(cacheVersions.sites).length >= 500) delete cacheVersions.sites[Object.keys(cacheVersions.sites)[0]];
+    cacheVersions.sites[site] = Math.max(Date.now(), (cacheVersions.sites[site] || 0) + 1);
+  } else cacheVersions.global = Math.max(Date.now(), cacheVersions.global + 1);
+  if (!writeStore("bromine:cache-versions", cacheVersions)) throw new Error("The new cache version could not be saved. Browser storage must be available to retain cache clearing across reloads.");
+}
 let bookmarks = readStore("bromine:bookmarks", [], (value) => Array.isArray(value) && value.length <= 500 &&
   value.every((row) => row && typeof row.id === "string" && typeof row.title === "string" && typeof row.url === "string" && typeof row.folder === "string" && /^https?:\/\//.test(row.url)));
 let history = readStore("bromine:history", [], (value) => Array.isArray(value) &&
@@ -394,7 +410,7 @@ function renderPage(tab) {
     frame.setAttribute("sandbox", direct && new URL(entry(tab).url).origin !== location.origin ? "allow-scripts allow-forms allow-downloads allow-same-origin" : "allow-scripts allow-forms allow-downloads");
     frame.referrerPolicy = "no-referrer";
     const site = sites[new URL(entry(tab).url).hostname];
-    frame.src = direct ? entry(tab).url : proxyUrl(entry(tab).url, { adblock: site?.adblock ?? settings.adblock, logging: settings.logging, cache: true });
+    frame.src = direct ? entry(tab).url : proxyUrl(entry(tab).url, { adblock: site?.adblock ?? settings.adblock, logging: settings.logging, cache: true, cacheVersion: cacheVersionFor(entry(tab).url) });
     frame.addEventListener("load", () => {
       if (tab.frame !== frame || tab.stopped) return;
       tab.loading = false;
@@ -870,7 +886,7 @@ $("#cache-limit").addEventListener("change", async () => {
   try { await refreshCache(); } catch (error) { notice(error.message); }
 });
 $("#clear-cache").addEventListener("click", async () => {
-  try { await cacheCommand({ action: "clear", category: $("#cache-category").value }); await refreshCache(); }
+  try { await cacheCommand({ action: "clear", category: $("#cache-category").value }); invalidateAssetVersion(); await refreshCache(); }
   catch (error) { notice(error.message); }
 });
 async function clearCurrentSiteCache() {
@@ -878,6 +894,7 @@ async function clearCurrentSiteCache() {
   try {
     await configureCache({ enabled: true, limitMB: settings.cacheLimit });
     await cacheCommand({ action: "clear", site: new URL(entry(current()).url).hostname });
+    invalidateAssetVersion(new URL(entry(current()).url).hostname);
     await refreshCache();
     addActivity(current(), "Current site cache cleared", { url: entry(current()).url });
     notice("Current site cache cleared. Reload to fetch fresh assets.");

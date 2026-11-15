@@ -146,7 +146,7 @@ export function rewriteHtml(source, target, requestUrl, adblock = true, extra = 
   const nodes = nodesOf(document);
   const baseElement = nodes.find((node) => node.tagName === "base" && attr(node, "href"));
   const base = baseElement ? new URL(attr(baseElement, "href"), target).href : target;
-  const options = { adblock, origin: target, ...extra };
+  const options = { adblock, origin: new URL(target).origin + "/", ...extra };
   for (const node of nodes) {
     if (!node.tagName) continue;
     const rel = (attr(node, "rel") || "").toLowerCase();
@@ -212,6 +212,7 @@ export function rewriteHtml(source, target, requestUrl, adblock = true, extra = 
   setAttr(bridge, "data-adblock", adblock ? "1" : "0");
   setAttr(bridge, "data-logging", extra.logging ? "1" : "0");
   setAttr(bridge, "data-cache", extra.cache === false ? "0" : "1");
+  setAttr(bridge, "data-cache-version", extra.cacheVersion || "");
   setAttr(bridge, "data-cookie-state", extra.cookieState || "");
   bridge.parentNode = head;
   head.childNodes.unshift(bridge);

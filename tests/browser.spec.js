@@ -627,8 +627,25 @@ test("quick actions and loading console work with redacted live progress and pro
   await page.getByRole("button", { name: "Clear loading events", exact: true }).click();
   await expect(page.locator("#console-list")).toHaveText("No loading events yet.");
   await page.getByRole("button", { name: "Close loading console", exact: true }).click();
+  const beforeClear = await frame.locator("body").evaluate(() => new Request("/assets/image.svg").url);
+  await page.evaluate(async () => {
+    const cache = await caches.open("bromine-cache-image-v1");
+    for (const site of ["fixture.example", "other.example"]) {
+      const url = new URL("/api/proxy", location.origin);
+      url.search = new URLSearchParams({ url: "https://cdn.example/asset.svg", origin: `https://${site}/`, type: "image" });
+      await cache.put(url, new Response("public CDN asset"));
+    }
+  });
   await page.getByRole("button", { name: "Clear current site cache", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Current site cache cleared");
+  expect(await page.evaluate(async () => (await (await caches.open("bromine-cache-image-v1")).keys())
+    .filter((request) => new URL(request.url).searchParams.get("url") === "https://cdn.example/asset.svg")
+    .map((request) => new URL(request.url).searchParams.get("origin")))).toEqual(["https://other.example/"]);
+  await page.getByRole("button", { name: "Reload", exact: true }).click();
+  await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
+  const afterClear = await frame.locator("body").evaluate(() => new Request("/assets/image.svg").url);
+  expect(new URL(afterClear).searchParams.get("cacheVersion")).not.toBe(new URL(beforeClear).searchParams.get("cacheVersion"));
+  expect(new URL(afterClear).searchParams.get("url")).toBe("https://fixture.example/assets/image.svg");
   const downloadPromise = page.waitForEvent("download");
   await frame.locator("body").evaluate(() => {
     const link = document.createElement("a"); link.href = "/file.txt"; link.download = "file.txt"; document.body.append(link); link.click();
@@ -846,11 +863,26 @@ test("bounded public cache stores, hits and clears only Bromine resources", asyn
   expect(warm.hit).toBe("hit");
   expect(warm.body).toBe(cold.body);
   console.log(`Public asset cache: cold ${cold.duration.toFixed(1)} ms, warm ${warm.duration.toFixed(1)} ms; no repeated upstream generation.`);
+  const agedAsset = asset + "&cacheVersion=aged";
+  await page.context().route("**/*cacheVersion=aged", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, headers: { ...response.headers(), age: "30" } });
+  });
+  await page.evaluate(async (url) => (await fetch(url)).text(), agedAsset);
+  await expect.poll(() => page.evaluate(async (url) => {
+    const cache = await caches.open("bromine-cache-image-v1");
+    const request = (await cache.keys()).find((request) => request.url === new URL(url, location.href).href);
+    if (!request) return false;
+    const response = await cache.match(request);
+    const remaining = Number(response.headers.get("X-Bromine-Expires")) - Date.now();
+    return remaining > 0 && remaining <= 30000;
+  }, agedAsset)).toBe(true);
   await page.evaluate(async (url) => {
     const cache = await caches.open("bromine-cache-image-v1");
-    const response = await cache.match(url);
+    const request = (await cache.keys()).find((request) => request.url === new URL(url, location.href).href);
+    const response = await cache.match(request);
     const headers = new Headers(response.headers); headers.set("X-Bromine-Expires", "1");
-    await cache.put(url, new Response(response.body, { headers }));
+    await cache.put(request, new Response(response.body, { headers }));
   }, asset);
   const refreshed = await page.evaluate(async (url) => (await fetch(url)).text(), asset);
   expect(refreshed).not.toBe(cold.body);
