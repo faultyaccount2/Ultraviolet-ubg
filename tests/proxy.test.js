@@ -501,6 +501,31 @@ test("compressed upstream scripts are decoded for rewriting while byte ranges re
   } });
 });
 
+test("large public rewritten scripts are compressed before CDN caching without compressing private or refused variants", async () => {
+  const source = `globalThis.example = ${JSON.stringify("public fixture ".repeat(7000))};`;
+  for (const [encoding, policy, compressed] of [
+    ["gzip, deflate, br", "public, max-age=60", true],
+    ["br, gzip;q=0.5", "public, max-age=60", true],
+    ["gzip;q=0, br", "public, max-age=60", false],
+    ["br", "public, max-age=60", false],
+    ["gzip", "private, max-age=60", false],
+  ]) {
+    const result = await invoke("https://fixture.example/large-script.js", {
+      type: "script", requestHeaders: { "accept-encoding": encoding },
+      send: () => ({ status: 200, headers: { "content-type": "application/javascript", "cache-control": policy }, body: Buffer.from(source) }),
+    });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.headers["content-encoding"], compressed ? "gzip" : undefined);
+    assert.equal((compressed ? gunzipSync(result.body) : result.body).toString(), source);
+    if (compressed) {
+      assert.equal(Number(result.headers["content-length"]), result.body.length);
+      assert.ok(result.body.length < Buffer.byteLength(source) / 4);
+      assert.match(result.headers.vary, /Accept-Encoding/);
+      assert.equal(result.headers["vercel-cdn-cache-control"], "public, s-maxage=60");
+    }
+  }
+});
+
 test("compressed JSON POST bodies retain their content encoding and raw bytes", async () => {
   const body = gzipSync(Buffer.from('{"search":"cats"}'));
   let outgoing;

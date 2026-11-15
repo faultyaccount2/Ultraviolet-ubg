@@ -5,6 +5,8 @@ import { pipeline } from "node:stream/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve as resolvePath } from "node:path";
 import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 import setCookieParser from "set-cookie-parser";
 import publicSuffixListModule from "@gorhill/ubo-core/lib/publicsuffixlist/publicsuffixlist.js";
 import { errorHtml, rewriteHtml, rewriteCss, rewriteJavaScript } from "./rewrite.js";
@@ -21,6 +23,7 @@ const redirects = new Set([301, 302, 303, 307, 308]);
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const MAX_FORWARDED_HEADER_BYTES = 16 * 1024;
 const MAX_COOKIE_RESPONSE_BYTES = 16 * 1024;
+const compressPublicAsset = promisify(gzip);
 const cacheableTypes = new Set(["script", "stylesheet", "image", "font", "media"]);
 const allowedMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const forwardedHeaderNames = new Set([
@@ -418,7 +421,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
         res.setHeader("X-Bromine-Cache-Ttl", String(ttl));
         res.setHeader("Vercel-CDN-Cache-Control", `public, s-maxage=${Math.floor(ttl)}`);
         const vary = response.headers.vary ? `, ${response.headers.vary}` : "";
-        res.setHeader("Vary", `Origin, Accept, Accept-Language, User-Agent${vary}`);
+        res.setHeader("Vary", `Origin, Accept, Accept-Encoding, Accept-Language, User-Agent${vary}`);
       };
       if (!rewriting) {
         res.setHeader("Content-Type", contentType);
@@ -452,6 +455,13 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
         }));
         res.setHeader("Content-Type", "text/javascript; charset=utf-8");
       } else res.setHeader("Content-Type", contentType);
+      const gzipSupport = String(req.headers["accept-encoding"] || "").match(/(?:^|,)\s*gzip\s*(?:;\s*q\s*=\s*(0(?:\.\d{1,3})?|1(?:\.0{1,3})?))?\s*(?=,|$)/i);
+      if (cacheable && output.length >= 64 * 1024 && gzipSupport && Number(gzipSupport[1] ?? 1) > 0) {
+        // The CDN's size limit applies before its own automatic compression.
+        output = await compressPublicAsset(output, { level: 4 });
+        res.setHeader("Content-Encoding", "gzip");
+        res.setHeader("Content-Length", String(output.length));
+      }
       res.statusCode = response.status;
       cacheHeaders();
       if (typeof res.write === "function") {

@@ -34,11 +34,13 @@ export function rewriteJavaScript(source, target, options = {}) {
   };
   const hasLocation = (node) => node?.type === "ObjectPattern" && node.properties.some((property) =>
     property.type === "Property" && (!property.computed && property.key.name === "location" || property.key.value === "location"));
-  const nodes = [[ast, null, false]];
+  const nodes = [ast, null, false];
   while (nodes.length) {
-    const [node, parent, optionalChain] = nodes.pop();
+    const optionalChain = nodes.pop();
+    const parent = nodes.pop();
+    const node = nodes.pop();
     if (!node || typeof node !== "object") continue;
-    if (parent) parents.set(node, parent);
+    if (parent && node.type === "Identifier" && node.name === "location") parents.set(node, parent);
     if (["ImportDeclaration", "ExportNamedDeclaration", "ExportAllDeclaration"].includes(node.type) && node.source) {
       changes.push({
         start: node.source.start, end: node.source.end,
@@ -59,11 +61,13 @@ export function rewriteJavaScript(source, target, options = {}) {
     } else if (node.type === "AssignmentExpression" && hasLocation(node.left)) {
       wrap(node.right, "globalThis.__bromineLocationObject(", ")");
     }
-    for (const value of Object.values(node)) {
+    const inOptionalChain = optionalChain || node.type === "ChainExpression";
+    for (const key in node) {
+      const value = node[key];
       if (Array.isArray(value)) {
-        for (const child of value) if (child?.type) nodes.push([child, node, optionalChain || node.type === "ChainExpression"]);
+        for (const child of value) if (child?.type) nodes.push(child, node, inOptionalChain);
       }
-      else if (value?.type) nodes.push([value, node, optionalChain || node.type === "ChainExpression"]);
+      else if (value?.type) nodes.push(value, node, inOptionalChain);
     }
   }
   const scopes = analyze(ast, {
