@@ -1,7 +1,7 @@
 const prefix = "bromine-cache-";
 const configCache = "bromine-config-v1";
 const configKey = new URL("/__bromine_cache_config__", self.location.origin).href;
-let config = { enabled: false, limitMB: 256 };
+let config = { enabled: true, limitMB: 256 };
 let initialized = false;
 let mutations = Promise.resolve();
 function mutate(task) {
@@ -15,7 +15,7 @@ function mutate(task) {
 async function initialize() {
   if (initialized) return;
   const response = await (await caches.open(configCache)).match(configKey);
-  if (response) config = await response.json();
+  if (response) config = { ...await response.json(), enabled: true };
   initialized = true;
 }
 
@@ -76,14 +76,13 @@ self.addEventListener("message", (event) => {
 async function cachedFetch(request, event) {
   await initialize();
   const url = new URL(request.url);
-  const target = new URL(url.searchParams.get("url"));
-  if (!config.enabled || url.searchParams.get("cache") === "0" || target.search ||
+  if (!config.enabled || !["script", "stylesheet", "image", "font", "media"].includes(url.searchParams.get("type")) || url.searchParams.get("cache") === "0" ||
       request.headers.has("range") || request.headers.has("x-bromine-site-authorization")) return fetch(request);
   const type = url.searchParams.get("type");
   const category = type === "image" ? "image" : type === "font" ? "font" : type === "media" ? "media" : "http";
   const cache = await caches.open(`${prefix}${category}-v1`);
   const cached = await cache.match(request);
-  if (cached && Date.now() - Number(cached.headers.get("X-Bromine-Stored")) < 15 * 60 * 1000) {
+  if (cached && Date.now() < Number(cached.headers.get("X-Bromine-Expires") || 0)) {
     const headers = new Headers(cached.headers);
     headers.set("X-Bromine-Cache", "hit");
     headers.set("X-Bromine-Used", String(Date.now()));
@@ -93,7 +92,9 @@ async function cachedFetch(request, event) {
     return response;
   }
   const response = await fetch(request);
-  if (response.status === 200 && response.headers.get("X-Bromine-Cacheable") === "1") {
+  const ttl = Math.min(900, Number(response.headers.get("X-Bromine-Cache-Ttl")));
+  const expires = Date.now() + ttl * 1000;
+  if (response.status === 200 && response.headers.get("X-Bromine-Cacheable") === "1" && ttl > 0) {
     const copy = response.clone();
     const stored = mutate(async () => {
       if (Number(copy.headers.get("content-length")) > 4 * 1024 * 1024) { copy.body.cancel(); return; }
@@ -112,6 +113,7 @@ async function cachedFetch(request, event) {
       headers.set("X-Bromine-Size", String(size));
       headers.set("X-Bromine-Used", String(Date.now()));
       headers.set("X-Bromine-Stored", String(Date.now()));
+      headers.set("X-Bromine-Expires", String(expires));
       await cache.put(request, new Response(body, { status: copy.status, headers }));
       await evict();
     });

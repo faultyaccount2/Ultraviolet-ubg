@@ -426,6 +426,46 @@ test("redirects strip site authorization across origins and preserve mutation se
   }
 });
 
+test("public asset cache eligibility respects origin freshness, sensitive queries and private responses", async () => {
+  for (const [target, type, cacheControl, extra, ttl] of [
+    ["https://fixture.example/assets/image.svg?v=2", "image", "public, max-age=60", { age: "55" }, "5"],
+    ["https://fixture.example/assets/image.svg", "image", "max-age=86400", {}, "900"],
+    ["https://fixture.example/assets/image.svg", "image", "max-age=0", {}, undefined],
+    ["https://fixture.example/assets/image.svg", "image", "private, max-age=60", {}, undefined],
+    ["https://fixture.example/assets/image.svg", "image", "no-cache, max-age=60", {}, undefined],
+    ["https://fixture.example/assets/image.svg", "image", "max-age=60", { age: "61" }, undefined],
+    ["https://fixture.example/assets/image.svg", "image", "max-age=60", { vary: "Cookie" }, undefined],
+    ["https://fixture.example/assets/image.svg", "image", "max-age=60", { "set-cookie": "private=value" }, undefined],
+    ["https://fixture.example/assets/image.svg?token=private", "image", "max-age=60", {}, undefined],
+    ["https://fixture.example/assets/image.svg", "xmlhttprequest", "max-age=60", {}, undefined],
+    ["https://fixture.example/", "document", "max-age=60", {}, undefined],
+  ]) {
+    const result = await invoke(target, { type, send: (url, options) => {
+      const response = fixtureResponse(url, options);
+      response.headers = { ...response.headers, "cache-control": cacheControl, ...extra };
+      return response;
+    } });
+    assert.equal(result.headers["x-bromine-cache-ttl"], ttl);
+    assert.equal(result.headers["x-bromine-cacheable"], ttl ? "1" : undefined);
+  }
+});
+
+test("compressed upstream scripts are decoded for rewriting while byte ranges request identity encoding", async () => {
+  const result = await invoke("https://fixture.example/compressed.js", {
+    type: "script", send: (_url, options) => {
+      assert.match(options.headers["accept-encoding"], /gzip/);
+      return { status: 200, headers: { "content-type": "application/javascript", "content-encoding": "gzip" }, body: gzipSync('console.log(location.href)') };
+    },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.match(result.body.toString(), /globalThis.__bromineLocation/);
+  assert.equal(result.headers["content-encoding"], undefined);
+  await invoke("https://fixture.example/file.txt", { requestHeaders: { range: "bytes=0-" }, send: (url, options) => {
+    assert.equal(options.headers["accept-encoding"], "identity");
+    return fixtureResponse(url, options);
+  } });
+});
+
 test("compressed JSON POST bodies retain their content encoding and raw bytes", async () => {
   const body = gzipSync(Buffer.from('{"search":"cats"}'));
   let outgoing;

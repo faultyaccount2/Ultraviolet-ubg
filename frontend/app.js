@@ -15,6 +15,7 @@ let nextId = 1;
 const closedTabs = [];
 let contextTab;
 let editingBookmark;
+let consoleRender;
 
 function notice(message) {
   $("#notice").textContent = message;
@@ -44,7 +45,7 @@ function writeStore(name, value) {
   }
 }
 
-const themes = ["mocha", "charcoal", "light", "system"];
+const themes = ["mocha", "charcoal", "ocean", "forest", "rose", "contrast", "light", "system"];
 const engines = {
   duckduckgo: "https://duckduckgo.com/?q=",
   google: "https://www.google.com/search?q=",
@@ -58,18 +59,22 @@ const hexColor = /^#[a-f\d]{6}$/i;
 const defaults = {
   theme: "mocha", engine: "duckduckgo", adblock: true, mode: "proxy",
   proxyDomains: [], restore: false, homepage: "", bookmarksBar: false, statusBar: true,
-  accent: "#b4befe", colors: {}, opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
-  textSize: 14, logging: false, cacheEnabled: false, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",
+  accent: "", colors: {}, opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
+  textSize: 14, logging: true, cacheEnabled: true, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",
 };
 const settings = { ...defaults, ...readStore("bromine:settings", defaults,
   (value) => value && themes.includes(value.theme) && (Object.hasOwn(engines, value.engine) || value.engine === "bing") && typeof value.adblock === "boolean" &&
     (value.mode === undefined || ["automatic", "direct", "proxy"].includes(value.mode)) &&
     (value.proxyDomains === undefined || Array.isArray(value.proxyDomains) && value.proxyDomains.every((rule) => typeof rule === "string")) &&
-    (value.accent === undefined || /^#[a-f\d]{6}$/i.test(value.accent)) &&
+    (value.accent === undefined || value.accent === "" || /^#[a-f\d]{6}$/i.test(value.accent)) &&
     (value.colors === undefined || value.colors && !Array.isArray(value.colors) && typeof value.colors === "object" &&
       Object.entries(value.colors).every(([key, color]) => Object.hasOwn(colorLabels, key) && typeof color === "string" && hexColor.test(color))) &&
     ["opacity", "blur", "saturation", "radius", "textSize", "concurrent", "cacheLimit"].every((key) => value[key] === undefined || Number.isFinite(value[key])) &&
     (value.homepage === undefined || typeof value.homepage === "string")) };
+if (!settings.cacheEnabled) {
+  settings.cacheEnabled = true;
+  writeStore("bromine:settings", settings);
+}
 if (settings.engine === "bing") {
   settings.engine = defaults.engine;
   writeStore("bromine:settings", settings);
@@ -84,8 +89,9 @@ let history = readStore("bromine:history", [], (value) => Array.isArray(value) &
     /^https?:\/\//.test(row.url) && typeof row.title === "string" && Number.isFinite(row.time)));
 function applyAppearance() {
   document.documentElement.dataset.theme = settings.theme === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "mocha") : settings.theme;
+  document.documentElement.style.removeProperty("--accent");
   for (const [name, value] of Object.entries({
-    "--accent": settings.accent, "--glass-opacity": `${settings.opacity}%`, "--blur": `${settings.blur}px`,
+    ...(settings.accent ? { "--accent": settings.accent } : {}), "--glass-opacity": `${settings.opacity}%`, "--blur": `${settings.blur}px`,
     "--saturation": `${settings.saturation}%`, "--radius": `${settings.radius}px`, "--ui-size": `${settings.textSize}px`,
   })) document.documentElement.style.setProperty(name, value);
   for (const key of Object.keys(colorLabels)) {
@@ -104,7 +110,7 @@ function applyAppearance() {
 function refreshColorInputs() {
   const style = getComputedStyle(document.documentElement);
   for (const input of document.querySelectorAll("[data-color]")) {
-    input.value = input.dataset.color === "accent" ? settings.accent : style.getPropertyValue(`--${input.dataset.color}`).trim();
+    input.value = style.getPropertyValue(`--${input.dataset.color}`).trim();
   }
 }
 for (const [key, label] of Object.entries({ accent: "Accent", ...colorLabels })) {
@@ -145,8 +151,7 @@ for (const [key, label] of Object.entries({ accent: "Accent", ...colorLabels }))
 }
 $("#reset-colors").addEventListener("click", () => {
   settings.colors = {};
-  document.documentElement.style.removeProperty("--accent");
-  settings.accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  settings.accent = "";
   applyAppearance();
   writeStore("bromine:settings", settings);
 });
@@ -157,7 +162,6 @@ $("#search-engine").value = settings.engine;
 $("#adblock").checked = settings.adblock;
 $("#proxy-domains").value = settings.proxyDomains.join("\n");
 $("#homepage").value = settings.homepage;
-$("#cache-enabled").checked = settings.cacheEnabled;
 $("#cache-limit").value = String(settings.cacheLimit);
 $("#download-concurrent").value = String(settings.concurrent);
 
@@ -177,7 +181,36 @@ function addRequest(tab, record) {
   if (!settings.logging) return;
   tab.requests.unshift({ ...record, url: redactUrl(record.url) });
   tab.requests = tab.requests.slice(0, 200);
+  addActivity(tab, `${record.method} ${record.type}: ${record.status}${record.duration === null ? "" : ` (${Math.round(record.duration)} ms)`} · ${record.filter}`, {
+    url: record.url, level: Number(record.status) >= 400 || record.status === "FAILED" ? "error" : "info",
+  });
   if ($("#inspector-dialog").open) renderRequests();
+}
+
+function addActivity(tab, message, { level = "info", url } = {}) {
+  const record = { time: Date.now(), message, level, url: url ? redactUrl(validateNavigation(url).href) : "" };
+  tab.activity.push(record);
+  tab.activity = tab.activity.slice(-200);
+  if (settings.logging) console.info("[Bromine]", message, record.url);
+  if ($("#console-dialog").open && current() === tab && !consoleRender) {
+    consoleRender = requestAnimationFrame(() => { consoleRender = 0; renderConsole(); });
+  }
+}
+
+function renderConsole() {
+  const tab = current();
+  $("#console-status").textContent = tab.status;
+  $("#console-list").replaceChildren();
+  for (const row of tab.activity) {
+    const li = document.createElement("li");
+    li.dataset.level = row.level;
+    const time = document.createElement("time");
+    time.dateTime = new Date(row.time).toISOString();
+    time.textContent = new Date(row.time).toLocaleTimeString();
+    li.append(time, document.createTextNode(`${row.message}${row.url ? ` · ${row.url}` : ""}`));
+    $("#console-list").append(li);
+  }
+  if (!tab.activity.length) $("#console-list").textContent = "No loading events yet.";
 }
 
 function persistSiteCookie(tab, data) {
@@ -234,12 +267,13 @@ function updateToolbar() {
   $("#address").value = entry(tab).url || "";
   $('[data-action="back"]').disabled = tab.position === 0;
   $('[data-action="forward"]').disabled = tab.position === tab.stack.length - 1;
-  $("#page-status").textContent = tab.loading ? "Loading…" : tab.status;
+  $("#page-status").textContent = tab.status;
   $("#route-button").textContent = entry(tab).url ? (tab.route.mode === "direct" ? "Direct" : "Proxy") : "Proxy";
   $("#route-button").title = tab.route?.reason || "Automatic routing";
   $('[data-action="stop"]').hidden = !tab.loading;
   $('[data-action="reload"]').hidden = tab.loading;
   document.querySelectorAll('[data-action="add-bookmark"]').forEach((button) => { button.disabled = !entry(tab).url; });
+  document.querySelectorAll('[data-action="copy-url"], [data-action="clear-site-cache"]').forEach((button) => { button.disabled = !entry(tab).url; });
   document.title = settings.cloakTitle || `${entry(tab).title} · bromine`;
   if (parent !== window) parent.postMessage({ type: "bromine:appearance", title: document.title, favicon: $('link[rel="icon"]').href }, "*");
 }
@@ -252,11 +286,14 @@ function selectTab(tab) {
     item.button.tabIndex = item === tab ? 0 : -1;
   }
   updateToolbar();
+  if ($("#console-dialog").open) renderConsole();
+  if ($("#inspector-dialog").open) renderRequests();
   saveSession();
 }
 
 function closeTab(tab) {
   const index = tabs.indexOf(tab);
+  clearTimeout(tab.loadTimer);
   for (const cleanup of tab.relayCleanups || []) cleanup();
   closedTabs.unshift({ stack: tab.stack.map((row) => ({ ...row })), position: tab.position, pinned: tab.pinned });
   closedTabs.splice(20);
@@ -269,7 +306,7 @@ function closeTab(tab) {
 }
 
 function createTab() {
-  const tab = { id: nextId++, stack: [{ url: null, title: "New tab" }], position: 0, loading: false, status: "Ready", requests: [], pinned: false };
+  const tab = { id: nextId++, stack: [{ url: null, title: "New tab" }], position: 0, loading: false, status: "Ready", requests: [], activity: [], pinned: false };
   tab.button = document.createElement("div");
   tab.button.className = "tab";
   tab.button.id = `tab-${tab.id}`;
@@ -333,6 +370,8 @@ function createTab() {
 }
 
 function renderPage(tab) {
+  clearTimeout(tab.loadTimer);
+  tab.stopped = false;
   for (const cleanup of tab.relayCleanups || []) cleanup();
   tab.relayCleanups = new Set();
   tab.page.replaceChildren();
@@ -355,15 +394,28 @@ function renderPage(tab) {
     frame.setAttribute("sandbox", direct && new URL(entry(tab).url).origin !== location.origin ? "allow-scripts allow-forms allow-downloads allow-same-origin" : "allow-scripts allow-forms allow-downloads");
     frame.referrerPolicy = "no-referrer";
     const site = sites[new URL(entry(tab).url).hostname];
-    frame.src = direct ? entry(tab).url : proxyUrl(entry(tab).url, { adblock: site?.adblock ?? settings.adblock, logging: settings.logging, cache: site?.cache ?? settings.cacheEnabled });
+    frame.src = direct ? entry(tab).url : proxyUrl(entry(tab).url, { adblock: site?.adblock ?? settings.adblock, logging: settings.logging, cache: true });
     frame.addEventListener("load", () => {
+      if (tab.frame !== frame || tab.stopped) return;
       tab.loading = false;
+      clearTimeout(tab.loadTimer);
+      if (direct) tab.status = "DIRECT frame loaded; internal progress unavailable";
+      else if (!tab.bridgeReady) tab.status = "Frame loaded; waiting for page confirmation";
+      addActivity(tab, direct ? "Direct frame finished loading" : "Frame load event received", { url: entry(tab).url });
       if (selected === tab.id) updateToolbar();
     });
     tab.frame = frame;
     tab.loading = true;
-    tab.status = direct ? "DIRECT · native site session; embedding or verification may still be blocked" : "HTTP(S) page";
+    tab.bridgeReady = false;
+    tab.status = direct ? "Loading DIRECT frame; site may refuse embedding" : "Loading via Proxy; checking safe asset cache";
     tab.expectedUrl = entry(tab).url;
+    addActivity(tab, tab.status, { url: entry(tab).url });
+    tab.loadTimer = setTimeout(() => {
+      if (tab.frame !== frame || tab.bridgeReady) return;
+      tab.status = "Still waiting for the page's document and scripts";
+      addActivity(tab, tab.status, { level: "warning", url: entry(tab).url });
+      if (selected === tab.id) updateToolbar();
+    }, 15000);
     tab.page.append(frame);
   }
   if (selected === tab.id) updateToolbar();
@@ -404,6 +456,7 @@ function openDialog(name) {
   if (name === "bookmarks") renderBookmarks();
   if (name === "downloads") renderDownloads();
   if (name === "inspector") renderRequests();
+  if (name === "console") renderConsole();
   if (name === "routing") {
     const url = entry(current()).url;
     const host = url ? new URL(url).hostname : null;
@@ -411,7 +464,6 @@ function openDialog(name) {
     $("#routing-current").textContent = host ? `${host} · ${current().route.mode} · ${current().route.policy}` : "Choose the default route for new navigations.";
     $("#site-route").value = site?.mode || settings.mode;
     $("#site-adblock").checked = site?.adblock ?? settings.adblock;
-    $("#site-cache").checked = site?.cache ?? settings.cacheEnabled;
     $("#verify-direct").disabled = !url;
   }
   if (name === "cache") refreshCache().catch((error) => notice(error.message));
@@ -449,9 +501,11 @@ const actions = {
   reload: () => renderPage(current(), true),
   stop: () => {
     const tab = current();
+    clearTimeout(tab.loadTimer);
+    tab.stopped = true;
     tab.frame?.contentWindow.postMessage({ type: "bromine:stop" }, "*");
     if (tab.frame) tab.frame.src = "about:blank";
-    tab.loading = false; tab.status = "Stopped"; updateToolbar();
+    tab.loading = false; tab.status = "Stopped"; addActivity(tab, "Loading stopped by user"); updateToolbar();
   },
   home: () => {
     if (settings.homepage) return navigate(settings.homepage);
@@ -472,6 +526,13 @@ const actions = {
   downloads: () => openDialog("downloads"),
   cache: () => openDialog("cache"),
   inspector: () => openDialog("inspector"),
+  console: () => openDialog("console"),
+  "copy-url": async () => {
+    try { await navigator.clipboard.writeText(entry(current()).url); notice("Current URL copied."); }
+    catch { notice("The browser could not copy this URL. Select and copy it from the address bar."); }
+  },
+  "clear-site-cache": () => clearCurrentSiteCache(),
+  duplicate: () => duplicateTab(current()),
   cloak: () => {
     const wrapper = window.open("about:blank", "_blank");
     if (!wrapper) return notice("Allow pop-ups to open the user-requested about:blank wrapper.");
@@ -533,6 +594,7 @@ $("#history-search").addEventListener("input", renderHistory);
 $("#clear-history").addEventListener("click", () => { history = []; writeStore("bromine:history", history); renderHistory(); });
 $("#theme").addEventListener("change", (event) => {
   settings.theme = event.target.value;
+  settings.accent = "";
   applyAppearance();
   writeStore("bromine:settings", settings);
 });
@@ -550,7 +612,8 @@ for (const [id, key, kind] of [
     settings[key] = kind === "boolean" ? input.checked : kind === "number" ? Number(input.value) : input.value;
     applyAppearance(); writeStore("bromine:settings", settings); saveSession();
     if (key === "logging" && !settings.logging) tabs.forEach((tab) => { tab.requests = []; });
-    if (key === "mode" || key === "logging") notice("Setting updated. Reload open pages to apply it.");
+    if (key === "logging") tabs.forEach((tab) => tab.frame?.contentWindow.postMessage({ type: "bromine:logging", enabled: settings.logging }, "*"));
+    if (key === "mode") notice("Routing updated. Reload open pages to apply it.");
   });
 }
 $("#proxy-domains").addEventListener("change", () => {
@@ -566,7 +629,7 @@ $("#homepage").addEventListener("change", () => {
 $("#apply-site").addEventListener("click", () => {
   const url = entry(current()).url;
   if (url) {
-    sites[new URL(url).hostname] = { mode: $("#site-route").value, adblock: $("#site-adblock").checked, cache: $("#site-cache").checked };
+    sites[new URL(url).hostname] = { mode: $("#site-route").value, adblock: $("#site-adblock").checked, cache: true };
     writeStore("bromine:sites", sites);
   } else {
     settings.mode = $("#site-route").value; $("#routing-mode").value = settings.mode;
@@ -602,9 +665,31 @@ document.addEventListener("keydown", (event) => {
 window.addEventListener("message", (event) => {
   const tab = tabs.find((item) => item.frame?.contentWindow === event.source);
   const data = event.data;
-  if (!tab || !data || typeof data !== "object") return;
+  if (!tab || tab.stopped || !data || typeof data !== "object") return;
   if (data.type === "bromine:cookie") {
     persistSiteCookie(tab, data);
+  } else if (data.type === "bromine:progress" && data.requestUrl === tab.expectedUrl) {
+    const stages = {
+      bootstrap: "Document received; executing scripts and styles",
+      loaded: "Page load completed",
+      "script-error": "A page script failed; see failed resources in Request inspector",
+      "request-start": "Starting API request",
+      "request-error": "An API request failed",
+    };
+    if (!Object.hasOwn(stages, data.stage)) return;
+    const failed = data.stage.endsWith("error");
+    if (data.stage === "bootstrap" || data.stage === "loaded") tab.status = stages[data.stage];
+    if (data.stage === "loaded") tab.loading = false;
+    try { addActivity(tab, stages[data.stage], { level: failed ? "error" : "info", url: typeof data.url === "string" ? data.url : entry(tab).url }); }
+    catch { notice("Invalid loading metadata was ignored."); }
+    if (selected === tab.id) updateToolbar();
+  } else if (data.type === "bromine:download" && data.requestUrl === tab.expectedUrl && typeof data.url === "string") {
+    try {
+      const url = validateNavigation(data.url).href;
+      downloads.add(url);
+      addActivity(tab, "Download queued through Proxy", { url });
+      notice("Download started through Proxy.");
+    } catch (error) { notice(error.message); }
   } else if (data.type === "bromine:navigate" && typeof data.url === "string") {
     navigate(data.url, data.newTab ? createTab() : tab, data.replace === true && !data.newTab);
   } else if (data.type === "bromine:form" && typeof data.url === "string") {
@@ -628,8 +713,8 @@ window.addEventListener("message", (event) => {
   } else if (data.type === "bromine:request" && settings.logging && typeof data.url === "string") {
     try {
       validateNavigation(data.url);
-      addRequest(tab, { url: data.url, method: data.method === "POST" ? "POST" : "GET", type: String(data.resourceType || "other").slice(0, 30),
-        status: typeof data.status === "number" ? data.status : "UNKNOWN", route: "proxy",
+      addRequest(tab, { url: data.url, method: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(data.method) ? data.method : "GET", type: String(data.resourceType || "other").slice(0, 30),
+        status: typeof data.status === "number" ? data.status : data.failed ? "FAILED" : "UNKNOWN", route: "proxy",
         size: Number.isFinite(data.size) ? data.size : null, duration: Number.isFinite(data.duration) ? data.duration : null,
         filter: data.blocked ? "BLOCKED" : data.cache === "hit" ? "CACHE HIT" : data.filterKnown ? "Allowed" : "Unknown" });
     } catch { notice("Invalid request metadata was ignored."); }
@@ -641,7 +726,10 @@ window.addEventListener("message", (event) => {
       entry(tab).title = typeof data.title === "string" && data.title.trim() ? data.title.slice(0, 160) : url.hostname;
       tab.title.textContent = entry(tab).title;
       tab.loading = false;
-      tab.status = typeof data.error === "string" ? data.error : "HTTP(S) page";
+      tab.bridgeReady = true;
+      clearTimeout(tab.loadTimer);
+      tab.status = typeof data.error === "string" ? data.error : "Document ready; finishing remaining assets";
+      addActivity(tab, data.error ? "Proxy returned an error page" : "Document parsed; page is interactive", { url: url.href, level: data.error ? "error" : "info" });
       if (typeof data.favicon === "string") {
         const favicon = new URL(data.favicon, location.href);
         if (favicon.origin === location.origin && favicon.pathname === "/api/proxy") tab.favicon.src = favicon.href;
@@ -773,11 +861,11 @@ $("#download-form").addEventListener("submit", (event) => {
 $("#download-concurrent").addEventListener("change", (event) => { settings.concurrent = Number(event.target.value); writeStore("bromine:settings", settings); downloads.pump(); });
 
 async function refreshCache() {
-  const stats = await configureCache({ enabled: settings.cacheEnabled, limitMB: settings.cacheLimit });
+  const stats = await configureCache({ enabled: true, limitMB: settings.cacheLimit });
   $("#cache-usage").textContent = `${(stats.bytes / 1024 / 1024).toFixed(2)} MB / ${stats.limitMB} MB · ${stats.entries} resources`;
 }
-for (const id of ["cache-enabled", "cache-limit"]) $(`#${id}`).addEventListener("change", async () => {
-  settings.cacheEnabled = $("#cache-enabled").checked; settings.cacheLimit = Number($("#cache-limit").value);
+$("#cache-limit").addEventListener("change", async () => {
+  settings.cacheLimit = Number($("#cache-limit").value);
   writeStore("bromine:settings", settings);
   try { await refreshCache(); } catch (error) { notice(error.message); }
 });
@@ -785,12 +873,19 @@ $("#clear-cache").addEventListener("click", async () => {
   try { await cacheCommand({ action: "clear", category: $("#cache-category").value }); await refreshCache(); }
   catch (error) { notice(error.message); }
 });
-$("#clear-site-cache").addEventListener("click", async () => {
+async function clearCurrentSiteCache() {
   if (!entry(current()).url) return notice("Open a page to choose its cache.");
-  try { await cacheCommand({ action: "clear", site: new URL(entry(current()).url).hostname }); await refreshCache(); }
+  try {
+    await configureCache({ enabled: true, limitMB: settings.cacheLimit });
+    await cacheCommand({ action: "clear", site: new URL(entry(current()).url).hostname });
+    await refreshCache();
+    addActivity(current(), "Current site cache cleared", { url: entry(current()).url });
+    notice("Current site cache cleared. Reload to fetch fresh assets.");
+  }
   catch (error) { notice(error.message); }
-});
-if (settings.cacheEnabled) refreshCache().catch((error) => notice(error.message));
+}
+$("#clear-site-cache").addEventListener("click", clearCurrentSiteCache);
+refreshCache().catch((error) => notice(`Public asset cache unavailable: ${error.message}`));
 navigator.serviceWorker?.addEventListener("message", (event) => { if (event.data?.type === "bromine:cache-error") notice(event.data.message); });
 
 function renderRequests() {
@@ -808,11 +903,14 @@ function renderRequests() {
 }
 $("#inspector-filter").addEventListener("change", renderRequests);
 $("#clear-requests").addEventListener("click", () => { current().requests = []; renderRequests(); });
-$("#duplicate-tab").addEventListener("click", () => {
-  const source = contextTab;
-  $("#tab-actions-dialog").close();
+function duplicateTab(source) {
   const tab = createTab(); tab.stack = source.stack.map((row) => ({ ...row })); tab.position = source.position; renderPage(tab);
+}
+$("#duplicate-tab").addEventListener("click", () => {
+  $("#tab-actions-dialog").close();
+  duplicateTab(contextTab);
 });
+$("#clear-console").addEventListener("click", () => { current().activity = []; renderConsole(); });
 $("#pin-tab").addEventListener("click", () => {
   contextTab.pinned = !contextTab.pinned; contextTab.button.classList.toggle("pinned", contextTab.pinned);
   $("#tab-actions-dialog").close(); saveSession();

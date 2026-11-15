@@ -22,7 +22,7 @@ let pageUrl = initialUrl(target);
 if (base === target) base = pageUrl;
 const requestUrl = initialUrl(script.dataset.request);
 const adblock = script.dataset.adblock !== "0";
-const logging = script.dataset.logging === "1";
+let logging = script.dataset.logging === "1";
 const cache = script.dataset.cache !== "0";
 const proxyOrigin = new URL(location.href).origin;
 let cookies = decodeCookieState(script.dataset.cookieState || "");
@@ -30,6 +30,11 @@ let cookies = decodeCookieState(script.dataset.cookieState || "");
 script.remove();
 const pendingCookieChanges = [];
 const send = (data, transfer = []) => { if (parent !== window) parent.postMessage(data, "*", transfer); };
+const progress = (stage, url = pageUrl) => send({ type: "bromine:progress", requestUrl, stage, url: redactUrl(url) });
+progress("bootstrap");
+window.addEventListener("load", () => progress("loaded"), { once: true });
+window.addEventListener("error", () => progress("script-error"));
+window.addEventListener("unhandledrejection", () => progress("script-error"));
 
 try { void navigator.serviceWorker; }
 catch (error) {
@@ -252,6 +257,10 @@ Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
     return blankWindows.get(child);
   },
 });
+function setInternalAttribute(element, name, value) {
+  // Unchanged URL writes can feed consent-script MutationObservers indefinitely.
+  if (nativeGetAttribute.call(element, name) !== value) nativeSetAttribute.call(element, name, value);
+}
 for (const name of ["pushState", "replaceState"]) {
   const native = History.prototype[name];
   History.prototype[name] = function (state, unused, url) {
@@ -269,13 +278,13 @@ function attributeValue(element, name, value) {
   if (["img", "script", "link", "audio", "video"].includes(tag) && name === "crossorigin") return "use-credentials";
   if (["img", "script", "link", "audio", "video"].includes(tag) &&
       ["src", "srcset", "imagesrcset", "href", "poster"].includes(name)) {
-    nativeSetAttribute.call(element, "crossorigin", "use-credentials");
+    setInternalAttribute(element, "crossorigin", "use-credentials");
   }
   if (name === "style") return cssResources(value);
   if (["srcset", "imagesrcset"].includes(name)) return mapSrcset(value, (url) => resource(url, "image"));
   const types = { img: "image", script: "script", link: "stylesheet", iframe: "subdocument", video: "media", audio: "media", source: "media", a: "document", area: "document" };
   if (["src", "href", "poster", "background"].includes(name) && !value.trim().startsWith("#")) {
-    if (["img", "script", "link", "audio", "video"].includes(tag)) nativeSetAttribute.call(element, "crossorigin", "use-credentials");
+    if (["img", "script", "link", "audio", "video"].includes(tag)) setInternalAttribute(element, "crossorigin", "use-credentials");
     const module = tag === "script" && (nativeGetAttribute.call(element, "type") || "").toLowerCase() === "module" ||
       tag === "link" && (nativeGetAttribute.call(element, "rel") || "").toLowerCase().split(/\s+/).includes("modulepreload");
     return resource(value, module ? "script" : types[tag] || "other", module);
@@ -291,7 +300,7 @@ function refreshModuleResource(element) {
   const attribute = element.tagName === "SCRIPT" ? "src" : element.tagName === "LINK" ? "href" : null;
   if (!attribute) return;
   const value = nativeGetAttribute.call(element, attribute);
-  if (value) nativeSetAttribute.call(element, attribute, attributeValue(element, attribute, value));
+  if (value) setInternalAttribute(element, attribute, attributeValue(element, attribute, value));
 }
 for (const [constructor, property] of [[HTMLScriptElement, "type"], [HTMLLinkElement, "rel"]]) {
   const descriptor = Object.getOwnPropertyDescriptor(constructor.prototype, property);
@@ -354,12 +363,19 @@ window.fetch = async (input, options) => {
   const request = await proxyRequest(input, options, resource, NativeRequest);
   const headers = new NativeHeaders(request.headers);
   const targetUrl = unproxyUrl(request.url, proxyOrigin);
+  if (logging) progress("request-start", targetUrl);
   proxyAuthorization(headers, targetUrl, pageUrl);
   const includeSiteCookies = credentials !== "omit" && new URL(targetUrl).hostname === new URL(pageUrl).hostname;
   const siteCookies = includeSiteCookies ? requestCookies(targetUrl) : [];
   if (includeSiteCookies) headers.set("X-Bromine-Site-Cookies", encodeCookieState(siteCookies));
   else headers.delete("X-Bromine-Site-Cookies");
-  const response = await nativeFetch(request, { headers, credentials: "include" });
+  let response;
+  try { response = await nativeFetch(request, { headers, credentials: "include" }); }
+  catch (error) {
+    progress("request-error", targetUrl);
+    if (logging) send({ type: "bromine:request", url: redactUrl(targetUrl), method: request.method, failed: true, resourceType: "xmlhttprequest", duration: performance.now() - start });
+    throw error;
+  }
   receiveCookieChanges(response.headers.get("X-Bromine-Cookie-Changes"));
   if (logging) send({ type: "bromine:request", url: redactUrl(originalUrl(raw)),
     method: options?.method || (input instanceof NativeRequest ? input.method : "GET"), status: response.status, resourceType: "xmlhttprequest",
@@ -369,9 +385,11 @@ window.fetch = async (input, options) => {
 };
 const nativeOpen = XMLHttpRequest.prototype.open;
 const xhrTargets = new WeakMap();
+const xhrMethods = new WeakMap();
 XMLHttpRequest.prototype.open = function (method, url, ...args) {
   const proxied = resource(String(url));
   xhrTargets.set(this, unproxyUrl(proxied, proxyOrigin));
+  xhrMethods.set(this, String(method).toUpperCase());
   return nativeOpen.call(this, method, proxied, ...args);
 };
 const nativeSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
@@ -387,6 +405,15 @@ XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
 const nativeSend = XMLHttpRequest.prototype.send;
 XMLHttpRequest.prototype.send = function (body) {
   const targetUrl = xhrTargets.get(this);
+  const start = performance.now();
+  if (logging && targetUrl) progress("request-start", targetUrl);
+  this.addEventListener("loadend", () => {
+    if (!targetUrl) return;
+    if (this.status === 0) progress("request-error", targetUrl);
+    if (logging) send({ type: "bromine:request", url: redactUrl(targetUrl), method: xhrMethods.get(this),
+      status: this.status || undefined, failed: this.status === 0, resourceType: "xmlhttprequest", duration: performance.now() - start,
+      cache: this.getResponseHeader("X-Bromine-Cache"), blocked: this.getResponseHeader("X-Bromine-Adblock") === "blocked", filterKnown: true });
+  }, { once: true });
   if (targetUrl && new URL(targetUrl).hostname === new URL(pageUrl).hostname) {
     const siteCookies = requestCookies(targetUrl);
     nativeSetRequestHeader.call(this, "X-Bromine-Site-Cookies", encodeCookieState(siteCookies));
@@ -511,12 +538,19 @@ window.WebSocket.CLOSING = 2;
 window.WebSocket.CLOSED = 3;
 document.addEventListener("click", (event) => {
   const anchor = event.target.closest?.("a[href]");
-  if (!anchor || event.defaultPrevented || event.button !== 0 || anchor.hasAttribute("download")) return;
+  if (!anchor || event.defaultPrevented || event.button !== 0) return;
   const raw = anchor.getAttribute("href");
   if (raw.startsWith("#")) return;
   const destination = originalUrl(raw);
   const url = new URL(destination);
   if (!["http:", "https:"].includes(url.protocol)) return;
+  if (anchor.hasAttribute("download")) {
+    if (parent === window) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    send({ type: "bromine:download", requestUrl, url: destination });
+    return;
+  }
   event.preventDefault();
   event.stopImmediatePropagation();
   if (parent === window) location.href = proxyOrigin + proxyUrl(destination, { adblock });
@@ -553,9 +587,11 @@ HTMLFormElement.prototype.submit = function () {
 };
 window.addEventListener("message", (event) => {
   if (event.source === parent && event.data?.type === "bromine:stop") window.stop();
+  if (event.source === parent && event.data?.type === "bromine:logging" && typeof event.data.enabled === "boolean") logging = event.data.enabled;
 });
-if (logging) {
+{
   const observer = new PerformanceObserver((list) => {
+    if (!logging) return;
     for (const entry of list.getEntries()) {
       if (["fetch", "xmlhttprequest"].includes(entry.initiatorType) || !entry.name.includes("/api/proxy?")) continue;
       const url = new URL(entry.name);

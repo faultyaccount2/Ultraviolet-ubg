@@ -284,6 +284,29 @@ test("site scripts see their own routes and navigate without leaving the isolate
   expect(errors).toEqual([]);
 });
 
+test("consent-style script type observers do not trigger a proxy mutation loop", async ({ page }) => {
+  test.skip(production, "Deterministic consent-observer fixture.");
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  const mutations = await frame.locator("body").evaluate(() => new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.type = "text/plain";
+    document.body.append(script);
+    let count = 0;
+    const observer = new MutationObserver(() => {
+      count++;
+      if (count >= 5) { observer.disconnect(); return; }
+      script.type = "text/plain";
+      script.setAttribute("type", "text/plain");
+    });
+    observer.observe(script, { attributes: true, attributeFilter: ["src"] });
+    script.src = "/modules/entry.js";
+    setTimeout(() => { observer.disconnect(); script.remove(); resolve(count); }, 100);
+  }));
+  expect(mutations).toBe(1);
+});
+
 test("proxied site cookies persist locally and return only to their matching host", async ({ page }) => {
   test.skip(production, "Cookie persistence uses deterministic local fixtures.");
   await page.goto("/");
@@ -547,6 +570,87 @@ test("color pickers and hex fields update the UI, persist, and reset to the them
   await expect(page.locator("body")).toHaveCSS("background-color", "rgb(239, 241, 245)");
 });
 
+test("new themes apply distinct accessible palettes and appearance settings survive reload", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const palettes = [];
+  for (const theme of ["ocean", "forest", "rose", "contrast"]) {
+    await page.getByLabel("Theme", { exact: true }).selectOption(theme);
+    palettes.push(await page.evaluate(() => {
+      const style = getComputedStyle(document.body);
+      const channel = (x) => { x /= 255; return x <= .04045 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; };
+      const luminance = (color) => color.match(/\d+/g).slice(0, 3).map(Number).map(channel).reduce((sum, n, i) => sum + n * [.2126, .7152, .0722][i], 0);
+      const a = luminance(style.color), b = luminance(style.backgroundColor);
+      return { background: style.backgroundColor, accent: style.getPropertyValue("--accent").trim(), contrast: (Math.max(a, b) + .05) / (Math.min(a, b) + .05) };
+    }));
+  }
+  expect(new Set(palettes.map((p) => p.background)).size).toBe(4);
+  expect(new Set(palettes.map((p) => p.accent)).size).toBe(4);
+  expect(palettes.every((p) => p.contrast >= 7)).toBe(true);
+  await page.getByLabel("Toolbar density", { exact: true }).selectOption("compact");
+  for (const [label, value] of [["Glass opacity", "95"], ["Blur", "8"], ["Saturation", "150"], ["Corner radius", "12"], ["Text size", "16"]]) {
+    await page.getByLabel(label, { exact: true }).evaluate((input, value) => {
+      input.value = value; input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, value);
+  }
+  await page.getByLabel("Show bookmarks bar", { exact: true }).check();
+  await page.getByLabel("Show status bar", { exact: true }).uncheck();
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "contrast");
+  await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  await expect(page.locator("html")).toHaveCSS("font-size", "16px");
+  await expect(page.locator("#bookmarks-bar")).toBeVisible();
+  await expect(page.locator(".status-bar")).toBeHidden();
+  await expect(page.locator("html")).toHaveCSS("--glass-opacity", "95%");
+  await expect(page.locator("html")).toHaveCSS("--blur", "8px");
+  await expect(page.locator("html")).toHaveCSS("--saturation", "150%");
+  await expect(page.locator("html")).toHaveCSS("--radius", "12px");
+});
+
+test("quick actions and loading console work with redacted live progress and proxy link downloads", async ({ page, context }) => {
+  test.skip(production, "Local diagnostics and download fixture.");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  const frame = await openTarget(page, fixture + "?token=do-not-log-this");
+  await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
+  await page.getByRole("button", { name: "Copy current URL", exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(fixture + "?token=do-not-log-this");
+  await frame.locator("body").evaluate(async () => { await fetch("/failed-api"); });
+  await page.getByRole("button", { name: "Loading console", exact: true }).click();
+  await expect(page.locator("#console-list")).toContainText("Document parsed");
+  await expect(page.locator("#console-list")).toContainText("503");
+  await expect(page.locator("#console-list")).toContainText("Starting API request");
+  const log = await page.locator("#console-list").innerText();
+  expect(log).not.toContain("do-not-log-this");
+  expect(log).not.toContain("private response body");
+  await page.getByRole("button", { name: "Clear loading events", exact: true }).click();
+  await expect(page.locator("#console-list")).toHaveText("No loading events yet.");
+  await page.getByRole("button", { name: "Close loading console", exact: true }).click();
+  await page.getByRole("button", { name: "Clear current site cache", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Current site cache cleared");
+  const downloadPromise = page.waitForEvent("download");
+  await frame.locator("body").evaluate(() => {
+    const link = document.createElement("a"); link.href = "/file.txt"; link.download = "file.txt"; document.body.append(link); link.click();
+  });
+  const download = await downloadPromise;
+  expect(await readFile(await download.path(), "utf8")).toBe("Bromine download fixture\n");
+  await page.getByRole("button", { name: "Duplicate current tab", exact: true }).click();
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await page.getByRole("button", { name: "Toggle fullscreen", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
+  await page.getByRole("button", { name: "Toggle fullscreen", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false);
+  await page.evaluate(() => {
+    document.querySelector("#address").value = "https://fixture.example/next";
+    document.querySelector("#address-form").requestSubmit();
+    document.querySelector('[data-action="stop"]').click();
+  });
+  await expect(page.locator(".tab-page:not([hidden]) iframe")).toHaveAttribute("src", "about:blank");
+  await expect(page.locator("#page-status")).toHaveText("Stopped");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test("Direct stays embedded without native tabs and per-site Proxy overrides persist separately", async ({ page, context }) => {
   await page.goto("/");
   const routeTarget = production ? "https://example.com/" : fixture;
@@ -696,23 +800,60 @@ test("cloaking is user-triggered and applies title/favicon to the about:blank wr
   await wrapper.close();
 });
 
+test("legacy disabled cache settings cannot disable public asset caching or reset other preferences", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Theme", { exact: true }).selectOption("ocean");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("bromine:settings"));
+    localStorage.setItem("bromine:settings", JSON.stringify({ ...saved, cacheEnabled: false }));
+    localStorage.setItem("bromine:sites", JSON.stringify({ "fixture.example": { mode: "proxy", adblock: true, cache: false } }));
+  });
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "ocean");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("bromine:settings")).cacheEnabled)).toBe(true);
+  if (!production) {
+    await openTarget(page, fixture);
+    const src = await page.locator(".tab-page:not([hidden]) iframe").getAttribute("src");
+    expect(new URL(src, page.url()).searchParams.get("cache")).toBe("1");
+  }
+});
+
 test("bounded public cache stores, hits and clears only Bromine resources", async ({ page }) => {
   test.skip(production, "Public fixture caching is verified locally; no production test fixtures.");
   await page.goto("/");
   await page.getByRole("button", { name: "Open menu" }).click();
   await page.getByRole("button", { name: "Cache", exact: true }).click();
-  await page.getByLabel("Public proxy cache", { exact: true }).check();
+  await expect(page.getByText("Public proxy cache: always on", { exact: true })).toBeVisible();
   await page.getByLabel("Maximum size", { exact: true }).selectOption("64");
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
-  const asset = "/api/proxy?url=https%3A%2F%2Ffixture.example%2Fassets%2Fimage.svg&type=image&cache=1";
-  await page.evaluate(async (url) => { await (await fetch(url)).arrayBuffer(); }, asset);
+  const asset = "/api/proxy?url=https%3A%2F%2Ffixture.example%2Fassets%2Fcached.svg%3Fv%3D1&type=image&cache=1";
+  const cold = await page.evaluate(async (url) => {
+    const start = performance.now(); const response = await fetch(url);
+    return { body: await response.text(), duration: performance.now() - start };
+  }, asset);
   await expect.poll(async () => page.evaluate(async () => {
     const names = (await caches.keys()).filter((name) => name.startsWith("bromine-cache-"));
     let count = 0;
     for (const name of names) count += (await (await caches.open(name)).keys()).length;
     return count;
   })).toBeGreaterThan(0);
-  expect(await page.evaluate(async (url) => (await fetch(url)).headers.get("X-Bromine-Cache"), asset)).toBe("hit");
+  const warm = await page.evaluate(async (url) => {
+    const start = performance.now(); const response = await fetch(url);
+    return { body: await response.text(), hit: response.headers.get("X-Bromine-Cache"), duration: performance.now() - start };
+  }, asset);
+  expect(warm.hit).toBe("hit");
+  expect(warm.body).toBe(cold.body);
+  console.log(`Public asset cache: cold ${cold.duration.toFixed(1)} ms, warm ${warm.duration.toFixed(1)} ms; no repeated upstream generation.`);
+  await page.evaluate(async (url) => {
+    const cache = await caches.open("bromine-cache-image-v1");
+    const response = await cache.match(url);
+    const headers = new Headers(response.headers); headers.set("X-Bromine-Expires", "1");
+    await cache.put(url, new Response(response.body, { headers }));
+  }, asset);
+  const refreshed = await page.evaluate(async (url) => (await fetch(url)).text(), asset);
+  expect(refreshed).not.toBe(cold.body);
   await page.getByRole("button", { name: "Close cache", exact: true }).click();
   const frame = await openTarget(page, fixture);
   await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();

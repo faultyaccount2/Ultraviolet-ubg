@@ -21,6 +21,7 @@ const redirects = new Set([301, 302, 303, 307, 308]);
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const MAX_FORWARDED_HEADER_BYTES = 16 * 1024;
 const MAX_COOKIE_RESPONSE_BYTES = 16 * 1024;
+const cacheableTypes = new Set(["script", "stylesheet", "image", "font", "media"]);
 const allowedMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const forwardedHeaderNames = new Set([
   "x-youtube-client-name", "x-youtube-client-version", "x-youtube-bootstrap-logged-in",
@@ -176,7 +177,7 @@ function headers(res, req) {
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", allowedMethods.join(", "));
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, X-Bromine-Site-Cookies");
-  res.setHeader("Access-Control-Expose-Headers", "X-Bromine-Adblock, X-Bromine-Cacheable, X-Bromine-Cache, X-Bromine-Cookie-Changes, Content-Range, Accept-Ranges, Content-Length");
+  res.setHeader("Access-Control-Expose-Headers", "X-Bromine-Adblock, X-Bromine-Cacheable, X-Bromine-Cache-Ttl, X-Bromine-Cache, X-Bromine-Cookie-Changes, Content-Range, Accept-Ranges, Content-Length");
   res.setHeader("Timing-Allow-Origin", "*");
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   res.setHeader("Content-Security-Policy", `${isolatedDocumentPolicy}; frame-ancestors 'self'`);
@@ -296,6 +297,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       let body = ["POST", "PUT", "PATCH", "DELETE"].includes(method) ? await readBody(req) : undefined;
       let url = initial;
       let response;
+      let credentialedRequest = false;
       const cookieChanges = [];
       for (let count = 0; count <= 5; count++) {
         if (adblock && await blocked(url.href, origin, type)) {
@@ -306,7 +308,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
         const records = await resolvePublicTarget(url, signal, resolve);
         const outgoingHeaders = {
           accept: req.headers.accept || "*/*",
-          "accept-encoding": "identity",
+          "accept-encoding": req.headers.range ? "identity" : "gzip, deflate, br",
           "user-agent": req.headers["user-agent"] || "Mozilla/5.0 (compatible; BromineHTTPProxy/1.0)",
           "accept-language": req.headers["accept-language"] || "en-US,en;q=0.9",
           referer: new URL(origin).origin + "/",
@@ -357,6 +359,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
           }
           outgoingHeaders["content-length"] = String(body.length);
         }
+        credentialedRequest ||= Boolean(outgoingHeaders.authorization || outgoingHeaders.cookie);
         response = await send(url, { records, method, body, headers: outgoingHeaders, signal });
         const setCookieHeader = response.headers["set-cookie"];
         const setCookieLines = Array.isArray(setCookieHeader) ?
@@ -397,9 +400,18 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
       appendCookieWrites(res, pendingCookieWrites, secureApplicationCookie);
       if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
-      if (req.method === "GET" && response.status === 200 && !siteAuthorization && !response.headers["set-cookie"] &&
-          /(?:public|max-age=|immutable)/i.test(response.headers["cache-control"] || "") &&
-          !/private|no-store/i.test(response.headers["cache-control"] || "")) res.setHeader("X-Bromine-Cacheable", "1");
+      const cacheControl = response.headers["cache-control"] || "";
+      const maxAge = Number(cacheControl.match(/(?:^|,)\s*max-age\s*=\s*"?(\d+)"?/i)?.[1] || 0);
+      const age = Number(response.headers.age || 0);
+      const ttl = Math.min(900, maxAge - age);
+      const sensitiveQuery = [...url.searchParams.keys()].some((key) => /auth|password|passwd|token|key|secret|session|signature|^code$/i.test(key));
+      if (req.method === "GET" && cacheableTypes.has(type) && response.status === 200 &&
+          !credentialedRequest && !siteAuthorization && !response.headers["set-cookie"] && !sensitiveQuery &&
+          ttl > 0 && !/private|no-store|no-cache/i.test(cacheControl) &&
+          !/(?:^|,)\s*(?:\*|cookie|authorization)\s*(?:,|$)/i.test(response.headers.vary || "")) {
+        res.setHeader("X-Bromine-Cacheable", "1");
+        res.setHeader("X-Bromine-Cache-Ttl", String(ttl));
+      }
       if (!rewriting) {
         res.setHeader("Content-Type", contentType);
         if (response.headers["content-encoding"]) res.setHeader("Content-Encoding", response.headers["content-encoding"]);

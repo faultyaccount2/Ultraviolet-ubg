@@ -50,6 +50,13 @@
           </div>
         </div>
       </header>
+      <nav class="quick-actions" aria-label="Quick actions">
+        <button data-action="console"><svg><use href="/icons.svg#console"></use></svg>Loading console</button>
+        <button data-action="copy-url"><svg><use href="/icons.svg#copy"></use></svg>Copy current URL</button>
+        <button data-action="clear-site-cache">Clear current site cache</button>
+        <button data-action="duplicate" aria-label="Duplicate current tab"><svg><use href="/icons.svg#copy"></use></svg>Duplicate tab</button>
+        <button data-action="fullscreen" aria-label="Toggle fullscreen"><svg><use href="/icons.svg#fullscreen"></use></svg>Fullscreen</button>
+      </nav>
       <nav id="bookmarks-bar" aria-label="Bookmarks bar" hidden></nav>
       <section id="pages" class="pages" tabindex="-1" aria-label="Page content"></section>
       <footer class="status-bar"><span id="page-status" role="status">Ready</span><a href="/privacy" target="_blank" rel="noopener">Privacy &amp; policies</a></footer>
@@ -73,7 +80,7 @@
     </template>
     <dialog id="settings-dialog">
       <div class="dialog-heading"><h2>Settings</h2><button class="icon-button" data-close aria-label="Close settings"><svg><use href="/icons.svg#close"></use></svg></button></div>
-      <label class="setting">Theme<select id="theme" aria-label="Theme"><option value="mocha">Mocha</option><option value="charcoal">Charcoal</option><option value="light">Light</option><option value="system">System</option></select></label>
+      <label class="setting">Theme<select id="theme" aria-label="Theme"><option value="mocha">Mocha</option><option value="charcoal">Charcoal</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="contrast">High Contrast</option><option value="light">Light</option><option value="system">System</option></select></label>
       <label class="setting">Default routing<select id="routing-mode" aria-label="Default routing"><option value="automatic">Automatic (Proxy by default)</option><option value="proxy">Always Proxy</option><option value="direct">Direct iframe (when permitted)</option></select></label>
       <label class="stack-setting">Proxy-preferred domains<textarea id="proxy-domains" rows="3" placeholder="example.com&#10;*.example.org&#10;=exact.example.net"></textarea></label>
       <p class="muted">All pages stay inside this app. Proxy is the default. Direct frames can be denied by a site's framing policy; their failures and navigation cannot be reliably inspected. Switch to Proxy manually if needed. Authentication, TLS and rate-limit failures are not bypassed.</p>
@@ -87,7 +94,7 @@
       <h3>Colors</h3>
       <div id="appearance-colors"></div>
       <button id="reset-colors" class="secondary-button">Reset colors to theme</button>
-      <p class="muted">Choose a color or enter #RRGGBB. Changes are saved in this browser. Page frame color affects the frame background, not a website's own styling.</p>
+      <p class="muted">Choose a color or enter #RRGGBB. Choosing a theme applies its accent; custom background and frame colors stay until you reset colors. Page frame color does not change a website's own styling.</p>
       <label class="setting">Glass opacity<input id="glass-opacity" type="range" min="55" max="100" value="82"></label>
       <label class="setting">Blur<input id="glass-blur" type="range" min="0" max="40" value="18"></label>
       <label class="setting">Saturation<input id="glass-saturation" type="range" min="100" max="200" value="130"></label>
@@ -108,7 +115,7 @@
       <p id="routing-current"></p>
       <label class="setting">Route<select id="site-route" aria-label="Route"><option value="automatic">Automatic</option><option value="direct">Direct iframe</option><option value="proxy">Always Proxy</option></select></label>
       <label class="setting">Proxy network filtering<input id="site-adblock" type="checkbox"></label>
-      <label class="setting">Proxy cache allowed<input id="site-cache" type="checkbox"></label>
+      <p class="muted">Safe public-asset caching is always enabled for Proxy pages. Private responses and downloads are never stored in the shared cache.</p>
       <button id="apply-site" class="secondary-button">Apply and reload</button>
       <button id="verify-direct" class="secondary-button">Use DIRECT for manual verification</button>
       <p class="muted">Manual verification uses the whole site in DIRECT, not just its CAPTCHA. The saved route stays DIRECT until you change it. The browser manages the site's cookies and login; they are not copied to Proxy or cleared by Bromine's cache controls. Switching to Proxy may lose verification and login.</p>
@@ -134,13 +141,20 @@
     </dialog>
     <dialog id="cache-dialog">
       <div class="dialog-heading"><h2>Cache</h2><button class="icon-button" data-close aria-label="Close cache"><svg><use href="/icons.svg#close"></use></svg></button></div>
-      <label class="setting">Public proxy cache<input id="cache-enabled" type="checkbox"></label>
+      <p><strong>Public proxy cache: always on</strong></p>
       <label class="setting">Maximum size<select id="cache-limit" aria-label="Maximum size"><option value="64">64 MB</option><option value="128">128 MB</option><option value="256">256 MB</option><option value="512">512 MB</option><option value="1024">1 GB</option><option value="2048">2 GB</option></select></label>
       <p id="cache-usage" role="status">Cache not initialized</p>
       <label class="setting">Category<select id="cache-category" aria-label="Category"><option value="">All proxy caches</option><option value="http">Proxy HTTP</option><option value="image">Images</option><option value="media">Media</option><option value="font">Fonts</option></select></label>
       <div class="button-row"><button id="clear-cache" class="secondary-button">Clear selected cache</button><button id="clear-site-cache" class="secondary-button">Clear current site cache</button></div>
-      <p class="muted">LRU eviction, at most 200 resources and 15-minute lifetime. Only stateless, publicly cacheable GET responses without target query strings are stored. Browser quotas may be lower than your configured limit.</p>
+      <p class="muted">Fresh public scripts, styles, images, fonts and media are reused without downloading them again. LRU eviction, at most 200 resources, and a lifetime limited by the site's cache headers and a 15-minute maximum. Private responses, APIs, pages and downloads are excluded. Browser quotas may be lower than your configured limit.</p>
       <p class="muted">This controls only Bromine's CacheStorage. It does not clear another site's cookies, LocalStorage, IndexedDB, service workers or your native HTTP cache, and never silently deletes logged-in sessions.</p>
+    </dialog>
+    <dialog id="console-dialog" class="wide-dialog">
+      <div class="dialog-heading"><h2>Loading console</h2><button class="icon-button" data-close aria-label="Close loading console"><svg><use href="/icons.svg#close"></use></svg></button></div>
+      <p id="console-status" role="status">Ready</p>
+      <p class="muted">Live stages and errors for the current tab. Detailed resource events follow the Request logging setting. URLs are redacted; headers, cookies, tokens, request bodies and website console contents are not collected. Direct pages cannot expose their internal progress.</p>
+      <ol id="console-list" class="console-list" aria-label="Loading events"></ol>
+      <div class="button-row"><button id="clear-console" class="secondary-button">Clear loading events</button><button data-action="reload" class="secondary-button">Reload current page</button></div>
     </dialog>
     <dialog id="inspector-dialog" class="wide-dialog">
       <div class="dialog-heading"><h2>Request inspector</h2><button class="icon-button" data-close aria-label="Close inspector"><svg><use href="/icons.svg#close"></use></svg></button></div>

@@ -10,6 +10,7 @@ const html = `<!doctype html><html><head><title>Fixture page</title>
 <form action="../get" method="get"><label>Query<input name="q" value="hello world"></label><button>GET form</button></form>
 <form action="../post" method="post"><input name="name" value="Bromine"><button>POST form</button></form>
 <div class="inline">Styled</div><div id="section">Fragment target</div></body></html>`;
+let assetGeneration = 0;
 
 export function fixtureResponse(url, options) {
   const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" };
@@ -49,6 +50,11 @@ export function fixtureResponse(url, options) {
     if (options.headers.authorization !== "Bearer fixture-user") status = 401;
     body = JSON.stringify({ authenticated: status === 200, method: options.method, body: options.body?.toString() || "" });
   }
+  else if (url.pathname === "/assets/cached.svg") {
+    headers["content-type"] = "image/svg+xml";
+    body = `<svg xmlns="http://www.w3.org/2000/svg"><text>${++assetGeneration}</text></svg>`;
+  }
+  else if (url.pathname === "/failed-api") { status = 503; headers["content-type"] = "text/plain"; body = "private response body"; }
   else if (url.pathname === "/nested") body = "<title>Nested fixture</title><h1>Nested fixture</h1>";
   else if (url.pathname === "/get") body = `<title>GET result</title><h1>GET result</h1><p>${url.searchParams.get("q")}</p>`;
   else if (url.pathname === "/file.txt") {

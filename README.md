@@ -25,6 +25,9 @@ controls, navigation stacks, reload/stop/home, search, bookmarks with
 import/export, history filtering/clearing, downloads, a request inspector,
 glass appearance settings and fullscreen. Web pages stay inside the app.
 DuckDuckGo is the default search engine; Google is also available in Settings.
+Mocha, Charcoal, Ocean, Forest, Rose, High Contrast, Light and System themes
+include coordinated palettes. Selecting a theme applies its accent; custom
+background/frame colors remain until Reset colors is used.
 Saved selections of the removed search provider migrate to DuckDuckGo without
 resetting other preferences.
 Settings also provides saved color pickers and #RRGGBB inputs for the background,
@@ -88,6 +91,8 @@ They are never sent on cross-origin redirects or stored in the public cache;
 ambient application Authorization headers remain stripped.
 Raw request streams are read without invoking the deployment platform's lazy
 JSON parser, preserving compressed JSON API requests such as YouTube search.
+Upstream compression reduces transfer sizes; rewritten text is decoded first,
+while byte-range requests use identity encoding.
 Same-site History API state changes keep the proxy URL and app address bar in
 sync without reloading the document. Blank sandboxed iframe history probes
 receive only the current document's History API; other frame access restrictions
@@ -153,17 +158,26 @@ site works. Cookie support does not solve CAPTCHA or Cloudflare challenges.
 
 ## Cache, privacy and presentation
 
-The optional service-worker cache is browser-local, split into proxy HTTP,
-image, font and media categories. It is LRU-bounded by the selected size and
-200 entries, expires after 15 minutes, and excludes authenticated/private
-responses and target query strings. Individual resources over 4 MB are
+The always-enabled service-worker cache is browser-local, split into proxy HTTP,
+image, font and media categories. Fresh public static assets are reused without
+another upstream download, including versioned asset URLs. Old disabled settings
+no longer disable caching. It is LRU-bounded by the selected size and 200 entries.
+Freshness honors upstream max-age/Age with a 15-minute cap. Pages, API responses,
+authenticated/private responses, sensitive query strings, and downloads are
+excluded. Individual resources over 4 MB are
 streamed normally but not duplicated into this cache. Clear all/categories
 or the current site's cache without clearing unrelated authenticated storage.
 
-Request logging is disabled by default, transient and limited to 200
+Request logging defaults on for new settings, remains optional, is transient and limited to 200
 metadata records per tab. Sensitive URL parameters are redacted from
 persisted history/bookmarks/session/download metadata. Neither request
 bodies, cookie values, credentials nor page contents are logged.
+The Loading console shows bounded timestamped navigation stages, slow-load
+warnings, API starts, resource status/timings and errors. It does not collect
+arbitrary website console messages or claim to see DIRECT internals.
+Quick actions expose the console, URL copying, site-cache clearing, tab
+duplication and fullscreen on desktop/mobile. Download links inside Proxy pages
+use the proxy download manager rather than opening an upstream connection.
 Proxy site cookies are kept in browser storage and sent through the proxy only
 to their matching upstream host; they are not persisted by the proxy server.
 
