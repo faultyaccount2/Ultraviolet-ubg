@@ -26,6 +26,8 @@ const logging = script.dataset.logging === "1";
 const cache = script.dataset.cache !== "0";
 const proxyOrigin = new URL(location.href).origin;
 let cookies = decodeCookieState(script.dataset.cookieState || "");
+// Site DOM snapshots must not clone or reload the proxy's bootstrap.
+script.remove();
 const pendingCookieChanges = [];
 const send = (data, transfer = []) => { if (parent !== window) parent.postMessage(data, "*", transfer); };
 

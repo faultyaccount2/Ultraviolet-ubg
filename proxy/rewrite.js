@@ -14,10 +14,17 @@ function rewriteUrl(value, base, options) {
 }
 
 export function rewriteJavaScript(source, target, options = {}) {
-  if (!options.module && !/\blocation\b|\bimport\s*(?:\(|\/[/*])/.test(source)) return source;
-  const ast = (options.module ? parseModule : parseScript)(source, {
-    ranges: true, next: true, webcompat: true, globalReturn: !options.module,
-  });
+  if (!options.module && !/\b(?:location|import|export)\b/.test(source)) return source;
+  let isModule = Boolean(options.module);
+  const parseOptions = { ranges: true, next: true, webcompat: true };
+  let ast;
+  try { ast = (isModule ? parseModule : parseScript)(source, { ...parseOptions, globalReturn: !isModule }); }
+  catch (error) {
+    if (isModule || !(error instanceof SyntaxError)) throw error;
+    // Preloads and generated script URLs do not always identify their module goal.
+    ast = parseModule(source, parseOptions);
+    isModule = true;
+  }
   const changes = [];
   const parents = new WeakMap();
   const wrap = (node, prefix, suffix) => {
@@ -59,7 +66,7 @@ export function rewriteJavaScript(source, target, options = {}) {
     }
   }
   const scopes = analyze(ast, {
-    ecmaVersion: 2024, sourceType: options.module ? "module" : "script", ignoreEval: true, fallback: "iteration",
+    ecmaVersion: 2024, sourceType: isModule ? "module" : "script", ignoreEval: true, fallback: "iteration",
   });
   for (const reference of scopes.globalScope.through) {
     const node = reference.identifier;

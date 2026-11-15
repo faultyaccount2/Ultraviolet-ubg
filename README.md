@@ -68,6 +68,8 @@ and unrelated objects retain their normal behavior. Assignments, replacement
 navigation, same-page hashes and the History API stay inside the app.
 Static module imports/exports, dynamic `import()` and `import.meta.url` use
 proxied module graphs; inline modules honor the document's resource base.
+Script responses with module syntax are also recognized when a preload or
+generated resource URL omits its module marker.
 Ordinary strings are not treated as JavaScript or rewritten as URLs.
 A frame bridge also routes `fetch` and XHR requests and reports navigation to
 the browser UI. This is not complete browser-origin virtualization: generated

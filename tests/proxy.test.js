@@ -408,6 +408,26 @@ test("module rewriting changes URL-bearing syntax without changing strings or ba
   assert.match(output, /import\(globalThis.__bromineModuleUrl\(`\.\/\$\{name\}\.js`,"https:\/\/fixture.example\/modules\/main.js"\)\)/);
 });
 
+test("script grammar detection recognizes unmarked modules and surfaces invalid JavaScript", async () => {
+  const response = await invoke("https://fixture.example/modules/unmarked.js", {
+    type: "script",
+    send: () => ({
+      status: 200, headers: { "content-type": "text/javascript" },
+      body: Buffer.from('import "./nested/value.js"; export const page = location.href; export const source = import.meta.url;'),
+    }),
+  });
+  assert.equal(response.statusCode, 200);
+  assert.match(response.body.toString(), /url=https%3A%2F%2Ffixture.example%2Fmodules%2Fnested%2Fvalue.js/);
+  assert.match(response.body.toString(), /globalThis.__bromineLocation.href/);
+  assert.match(response.body.toString(), /"https:\/\/fixture.example\/modules\/unmarked.js"/);
+  const invalid = await invoke("https://fixture.example/modules/invalid.js", {
+    type: "script",
+    send: () => ({ status: 200, headers: { "content-type": "text/javascript" }, body: Buffer.from("import {") }),
+  });
+  assert.equal(invalid.statusCode, 502);
+  assert.match(invalid.body.toString(), /Unable to load this page/);
+});
+
 test("location rewriting preserves lexical bindings, ordinary object properties and evaluation order", () => {
   const source = `const state = { location: 2 }; let calls = 0;
     function current() { calls++; return state; }
