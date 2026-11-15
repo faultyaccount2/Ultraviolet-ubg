@@ -46,10 +46,8 @@ top-level access. DIRECT respects the destination's `X-Frame-Options` and CSP
 `frame-ancestors`; the app cannot override those headers on a native site.
 Neither challenge loading nor a fixture test proves successful
 live verification. No remote browser or automatic challenge solver is provided.
-Text searches use Bing by default. Bing returned visible results in the live
-DIRECT-route check; proxied Bing may hide results depending on its upstream
-behavior. Google and DuckDuckGo remain selectable but may require their own
-human verification or refuse proxied traffic.
+Searches use the selected engine without silently substituting another provider.
+Search providers may require human verification or refuse proxied traffic.
 Shortcuts use Alt+T/W/L/R and Alt+Left/Right to avoid taking over browser
 Ctrl/Cmd shortcuts. Icons and favicons are local SVGs; typography deliberately
 uses system fonts instead of the missing, obfuscated Switzer font.
@@ -63,8 +61,18 @@ and absolute resources, query strings, fragments and ordinary forms.
 Programmatic `form.submit()` calls use the same original-target routing as
 user submissions. CSS parsing recovers browser-tolerated syntax errors while
 still rewriting resource URLs.
-JavaScript source is not blindly rewritten; a frame bridge routes `fetch`
-and XHR requests and reports navigation to the browser UI.
+Syntax-aware JavaScript processing routes global `location` references and
+ordinary `.location` accesses through the upstream page URL, including aliased
+windows and common destructuring patterns. Locally bound `location` variables
+and unrelated objects retain their normal behavior. Assignments, replacement
+navigation, same-page hashes and the History API stay inside the app.
+Static module imports/exports, dynamic `import()` and `import.meta.url` use
+proxied module graphs; inline modules honor the document's resource base.
+Ordinary strings are not treated as JavaScript or rewritten as URLs.
+A frame bridge also routes `fetch` and XHR requests and reports navigation to
+the browser UI. This is not complete browser-origin virtualization: generated
+code, import maps, computed location property names and optional-chain location
+aliases can still require unsupported behavior.
 Empty POSTs need no content type. `Request`-object fetch bodies are preserved;
 gzip/deflate/Brotli request encodings, XML API payloads and JSON bodies labeled
 `application/json+protobuf` are forwarded unchanged within the same 1 MB
@@ -80,8 +88,8 @@ remain in force. Classic dedicated workers use a local Blob bootstrap with
 proxied imports/fetch/XHR. Module workers and WebSockets inside workers are
 explicitly unsupported.
 
-Authenticated sessions, multipart uploads, relative JavaScript module
-imports, complex client routing, origin isolation requirements, DRM, anti-bot
+Authenticated sessions, multipart uploads, complex client routing,
+origin isolation requirements, DRM, anti-bot
 systems and complex streaming applications are not guaranteed. Optional
 WebSocket relay support is separately authenticated and limited to explicitly
 approved exact hostnames. WebRTC networking, TCP/UDP, QUIC and system-wide
@@ -92,7 +100,7 @@ Binary responses, downloads and media stream with backpressure: there is no
 arbitrary 4 MB file limit. Streamed Vercel responses are exempt from its
 buffered-response limit. The function has a 300-second execution budget
 (the upstream signal expires at 290 seconds), a 1 MB POST limit and at most
-five redirects. HTML/CSS has a separate 64 MB processing budget because it
+five redirects. HTML, CSS and JavaScript have a separate 64 MB processing budget because they
 must be parsed and rewritten. Large downloads still depend on upstream
 restrictions, execution time and the client's browser memory.
 Incoming application cookies and authorization headers are never forwarded.
@@ -128,7 +136,11 @@ public-resource cache, and cached site data disappears with the context.
 Nested proxy frames retain the opaque
 sandbox but omit the ancestor restriction that would reject an opaque parent.
 Dynamic DOM URLs, inserted HTML, styles, fetch, XHR and Request objects are
-rewritten at runtime; arbitrary JavaScript source is not regex-rewritten.
+rewritten at runtime. Site-visible document and resource URL getters report
+upstream URLs while the actual requests remain proxied. Unavailable sandbox
+service workers are not advertised to site feature detection; the app's own
+service worker remains separate. JavaScript URL handling uses parsed syntax
+and lexical scope analysis, not regex replacement of arbitrary source text.
 The API is not an authentication or challenge bypass and cannot promise every
 site works. Cookie support does not solve CAPTCHA or Cloudflare challenges.
 

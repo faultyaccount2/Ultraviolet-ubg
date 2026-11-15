@@ -7,7 +7,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { readFile } from "node:fs/promises";
 import setCookieParser from "set-cookie-parser";
 import publicSuffixListModule from "@gorhill/ubo-core/lib/publicsuffixlist/publicsuffixlist.js";
-import { errorHtml, rewriteHtml, rewriteCss } from "./rewrite.js";
+import { errorHtml, rewriteHtml, rewriteCss, rewriteJavaScript } from "./rewrite.js";
 import { isBlocked } from "./filtering.js";
 import { proxyParameters } from "../shared/proxy-url.js";
 import {
@@ -372,7 +372,10 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
         url = destination;
       }
       const contentType = response.headers["content-type"] || "application/octet-stream";
-      const rewriting = req.method !== "HEAD" && response.status !== 206 && /^(?:text\/html|application\/xhtml\+xml|text\/css)(?:;|$)/i.test(contentType);
+      const isScript = type === "script" &&
+        /^(?:application|text)\/(?:javascript|ecmascript|x-javascript)(?:;|$)/i.test(contentType);
+      const rewriting = req.method !== "HEAD" && response.status !== 206 &&
+        (isScript || /^(?:text\/html|application\/xhtml\+xml|text\/css)(?:;|$)/i.test(contentType));
       const visibleCookieChanges = cookieChanges.filter((cookie) => !cookie.httpOnly &&
         validCookieRecord(cookie, originUrl.href, originHost, suffixes) && cookiePathMatches(cookie, originUrl.href));
       if (visibleCookieChanges.length > 0 && type === "xmlhttprequest" && clientCookies !== null) {
@@ -408,6 +411,11 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       } else if (req.method !== "HEAD" && response.status !== 206 && /^text\/css(?:;|$)/i.test(contentType)) {
         output = Buffer.from(rewriteCss(textBody(output, contentType), url.href, { adblock, origin, logging: query.get("logging") === "1", cache: query.get("cache") !== "0" }));
         res.setHeader("Content-Type", "text/css; charset=utf-8");
+      } else if (isScript) {
+        output = Buffer.from(rewriteJavaScript(textBody(output, contentType), url.href + new URL(raw).hash, {
+          adblock, origin, logging: query.get("logging") === "1", cache: query.get("cache") !== "0", module: query.get("module") === "1",
+        }));
+        res.setHeader("Content-Type", "text/javascript; charset=utf-8");
       } else res.setHeader("Content-Type", contentType);
       res.statusCode = response.status;
       if (typeof res.write === "function") {

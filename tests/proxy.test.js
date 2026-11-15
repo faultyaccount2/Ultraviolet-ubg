@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import { createServer } from "node:http";
 import { once } from "node:events";
+import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import { parse } from "parse5";
 import { createProxyHandler } from "../proxy/service.js";
 import { isPublicAddress, pinnedLookup, resolvePublicTarget, validateTarget, requestResource } from "../proxy/network.js";
-import { rewriteCss, rewriteHtml } from "../proxy/rewrite.js";
+import { rewriteCss, rewriteHtml, rewriteJavaScript } from "../proxy/rewrite.js";
 import { proxyUrl, unproxyUrl } from "../shared/proxy-url.js";
 import {
   decodeCookieState, encodeCookieState, normalizeSiteCookie, siteCookieName,
@@ -378,7 +379,7 @@ test("redirects are validated per hop, including private IP and changed DNS dest
   assert.equal(rebound.statusCode, 403);
 });
 
-test("HTML uses base href for resources, srcset, forms and fragments without rewriting script source", () => {
+test("HTML uses base href for resources, srcset, forms and fragments without changing ordinary script strings", () => {
   const source = '<html><head><base href="/assets/"><meta http-equiv="Content-Security-Policy" content="default-src none"><link rel="stylesheet" href="style.css"></head><body><a href="../next?q=1#part">Next</a><img srcset="data:image/png;base64,AAAA 1x, image.png 2x"><form action="../post"></form><script>const text="/not-a-url-to-change";</script></body></html>';
   const output = rewriteHtml(source, "https://example.com/start", "https://example.com/start");
   const nodes = elements(output);
@@ -391,6 +392,53 @@ test("HTML uses base href for resources, srcset, forms and fragments without rew
   assert.match(attribute(nodes.find((node) => node.tagName === "img"), "srcset"), /data:image\/png;base64,AAAA 1x/);
   assert.equal(attribute(nodes.find((node) => node.tagName === "form"), "data-proxy-action"), "https://example.com/post");
   assert.match(output, /const text="\/not-a-url-to-change";/);
+});
+
+test("module rewriting changes URL-bearing syntax without changing strings or bare imports", () => {
+  const output = rewriteJavaScript(
+    'import value from "./value.js"; export * from "../shared.js"; import "package"; const example = \'import("./keep.js")\'; const url = import.meta.url; const lazy = import(`./${name}.js`);',
+    "https://fixture.example/modules/main.js", { origin: "https://fixture.example/", module: true },
+  );
+  assert.match(output, /url=https%3A%2F%2Ffixture.example%2Fmodules%2Fvalue.js/);
+  assert.match(output, /url=https%3A%2F%2Ffixture.example%2Fshared.js/);
+  assert.match(output, /module=1/);
+  assert.match(output, /import "package"/);
+  assert.match(output, /'import\("\.\/keep.js"\)'/);
+  assert.match(output, /const url = "https:\/\/fixture.example\/modules\/main.js"/);
+  assert.match(output, /import\(globalThis.__bromineModuleUrl\(`\.\/\$\{name\}\.js`,"https:\/\/fixture.example\/modules\/main.js"\)\)/);
+});
+
+test("location rewriting preserves lexical bindings, ordinary object properties and evaluation order", () => {
+  const source = `const state = { location: 2 }; let calls = 0;
+    function current() { calls++; return state; }
+    current().location += 3;
+    const local = ((location) => location + 1)(7);
+    const optional = null?.location.href;
+    const { location: own } = state;
+    let dynamic; with (state) { dynamic = location; }
+    result = { value: state.location, calls, local, own, optional, dynamic };`;
+  const context = { __bromineLocationObject: (object) => object };
+  runInNewContext(rewriteJavaScript(source, "https://fixture.example/app.js"), context);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.result)), { value: 5, calls: 1, local: 8, own: 5, dynamic: 5 });
+});
+
+test("global and aliased window locations route reads, writes and destructuring through site URLs", () => {
+  const nativeLocation = { href: "https://proxy.example/api/proxy" };
+  const siteLocation = { href: "https://fixture.example/login" };
+  const window = { location: nativeLocation, other: 42 };
+  const owner = { location: siteLocation, other: 42 };
+  const context = {
+    window, __bromineLocation: siteLocation,
+    __bromineLocationObject: (object) => object === window ? owner : object,
+  };
+  const source = `const alias = window; const { location: picked, ...rest } = alias;
+    const shorthand = { location };
+    result = [location.href, alias["location"].href, picked.href, shorthand.location.href, rest.other];
+    location = "/next";`;
+  runInNewContext(rewriteJavaScript(source, "https://fixture.example/app.js"), context);
+  assert.deepEqual(Array.from(context.result), Array(4).fill("https://fixture.example/login").concat(42));
+  assert.equal(siteLocation.href, "/next");
+  assert.equal(nativeLocation.href, "https://proxy.example/api/proxy");
 });
 
 test("CSS rewrites quoted URLs, imports, data URLs and external resources", () => {

@@ -1,6 +1,7 @@
-import { proxyUrl, unproxyUrl, resourceUrl } from "../shared/proxy-url.js";
+import { proxyUrl, unproxyUrl, resourceUrl, moduleUrl } from "../shared/proxy-url.js";
 import { redactUrl } from "../shared/address.js";
 import { proxyRequest } from "../shared/proxy-request.js";
+import { mapSrcset } from "../shared/srcset.js";
 import {
   applySiteCookie, cookieDomainMatches, cookieMatches, decodeCookieState, documentCookie, encodeCookieState, normalizeSiteCookie,
 } from "../shared/cookie-jar.js";
@@ -8,10 +9,18 @@ import valueParser from "postcss-value-parser";
 import { MemoryCache, MemoryCacheStorage } from "./memory-cache.js";
 
 const script = document.currentScript;
+const nativeLocation = window.location;
 const target = script.dataset.target;
 let base = script.dataset.base || target;
-let pageUrl = target;
-const requestUrl = script.dataset.request;
+function initialUrl(value) {
+  const url = new URL(value);
+  // Fragments are not sent to the HTTP proxy.
+  if (!url.hash) url.hash = nativeLocation.hash;
+  return url.href;
+}
+let pageUrl = initialUrl(target);
+if (base === target) base = pageUrl;
+const requestUrl = initialUrl(script.dataset.request);
 const adblock = script.dataset.adblock !== "0";
 const logging = script.dataset.logging === "1";
 const cache = script.dataset.cache !== "0";
@@ -20,7 +29,25 @@ let cookies = decodeCookieState(script.dataset.cookieState || "");
 const pendingCookieChanges = [];
 const send = (data, transfer = []) => { if (parent !== window) parent.postMessage(data, "*", transfer); };
 
-function resource(value, type = "xmlhttprequest") {
+try { void navigator.serviceWorker; }
+catch (error) {
+  if (error.name !== "SecurityError") throw error;
+  // Feature detection must not advertise an API disabled by the opaque sandbox.
+  delete Navigator.prototype.serviceWorker;
+}
+
+function sourceUrl(value) {
+  if (!value || !value.startsWith("/api/proxy?") && !value.startsWith(`${proxyOrigin}/api/proxy?`)) return value;
+  return unproxyUrl(value, proxyOrigin);
+}
+
+Object.defineProperties(document, {
+  URL: { configurable: true, get: () => pageUrl },
+  documentURI: { configurable: true, get: () => pageUrl },
+  baseURI: { configurable: true, get: () => base },
+});
+
+function resource(value, type = "xmlhttprequest", module = false) {
   let url;
   const pageContext = new URL(pageUrl);
   pageContext.search = "";
@@ -29,12 +56,85 @@ function resource(value, type = "xmlhttprequest") {
   if (url.origin === proxyOrigin && url.pathname === "/api/proxy" && url.searchParams.has("url")) {
     url.searchParams.set("origin", pageContext.href);
     url.searchParams.set("type", type);
+    if (module) url.searchParams.set("module", "1");
+    else url.searchParams.delete("module");
     return url.href;
   }
-  return resourceUrl(value, base, proxyOrigin, { adblock, origin: pageContext.href, type, logging, cache });
+  return resourceUrl(value, base, proxyOrigin, { adblock, origin: pageContext.href, type, logging, cache, module });
 }
+Object.defineProperty(globalThis, "__bromineModuleUrl", {
+  value: (value, scriptUrl) => moduleUrl(value, scriptUrl, proxyOrigin, { adblock, origin: pageUrl, logging, cache }),
+});
 function originalUrl(value) {
   return unproxyUrl(resource(value), proxyOrigin);
+}
+function updatePageUrl(value, replace) {
+  if (base === pageUrl) base = value;
+  pageUrl = value;
+  send({ type: "bromine:history", requestUrl, url: pageUrl, replace });
+}
+function navigateLocation(value, replace = false) {
+  const destination = new URL(String(value), base);
+  if (!["http:", "https:"].includes(destination.protocol)) throw new DOMException("Only HTTP(S) navigation is supported.", "NotSupportedError");
+  const previous = new URL(pageUrl);
+  if (destination.origin === previous.origin && destination.pathname === previous.pathname && destination.search === previous.search &&
+      destination.hash !== previous.hash) {
+    updatePageUrl(destination.href, replace);
+    if (replace) nativeLocation.replace(nativeLocation.href.split("#")[0] + destination.hash);
+    else nativeLocation.hash = destination.hash;
+  } else if (parent === window) nativeLocation[replace ? "replace" : "assign"](resource(destination.href, "document"));
+  else send({ type: "bromine:navigate", url: destination.href, replace });
+}
+const siteLocation = {
+  assign: (value) => navigateLocation(value),
+  replace: (value) => navigateLocation(value, true),
+  reload: () => nativeLocation.reload(),
+  toString: () => pageUrl,
+  [Symbol.toPrimitive]: () => pageUrl,
+};
+for (const name of ["href", "origin", "protocol", "host", "hostname", "port", "pathname", "search", "hash"]) {
+  Object.defineProperty(siteLocation, name, {
+    enumerable: true,
+    get: () => new URL(pageUrl)[name],
+    ...(name === "origin" ? {} : { set(value) {
+      if (name === "href") { navigateLocation(value); return; }
+      const url = new URL(pageUrl);
+      url[name] = value;
+      navigateLocation(url.href);
+    } }),
+  });
+}
+function locationObject(object) {
+  return new Proxy(object, {
+    get: (target, name) => name === "location" ? siteLocation : Reflect.get(target, name, target),
+    set(target, name, value) {
+      if (name !== "location") return Reflect.set(target, name, value, target);
+      navigateLocation(value);
+      return true;
+    },
+  });
+}
+const siteWindow = locationObject(window);
+const siteDocument = locationObject(document);
+Object.defineProperties(globalThis, {
+  __bromineDocumentUrl: { value: pageUrl },
+  __bromineLocation: { value: siteLocation },
+  __bromineLocationObject: { value: (object) => object === window ? siteWindow : object === document ? siteDocument : object },
+});
+window.addEventListener("hashchange", () => {
+  const url = new URL(pageUrl);
+  url.hash = nativeLocation.hash;
+  if (url.href !== pageUrl) updatePageUrl(url.href, false);
+});
+window.addEventListener("popstate", () => {
+  const url = unproxyUrl(nativeLocation.href, proxyOrigin);
+  if (url !== pageUrl && new URL(url).origin === new URL(pageUrl).origin) updatePageUrl(url, true);
+});
+for (const name of ["oldURL", "newURL"]) {
+  const descriptor = Object.getOwnPropertyDescriptor(HashChangeEvent.prototype, name);
+  Object.defineProperty(HashChangeEvent.prototype, name, {
+    ...descriptor, get() { return sourceUrl(descriptor.get.call(this)); },
+  });
 }
 function cookieIdentity(cookie) {
   return `${cookie.name}\n${cookie.domain}\n${cookie.path}\n${cookie.hostOnly ? "1" : "0"}`;
@@ -120,6 +220,15 @@ function cssResources(value) {
   return parsed.toString();
 }
 const nativeSetAttribute = Element.prototype.setAttribute;
+const nativeGetAttribute = Element.prototype.getAttribute;
+const urlAttributes = new Set(["src", "href", "action", "formaction", "poster", "background", "data"]);
+Element.prototype.getAttribute = function (name) {
+  const value = nativeGetAttribute.call(this, name);
+  const attribute = String(name).toLowerCase();
+  if (value === null) return value;
+  if (["srcset", "imagesrcset"].includes(attribute)) return mapSrcset(value, sourceUrl);
+  return urlAttributes.has(attribute) ? sourceUrl(value) : value;
+};
 const contentWindow = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "contentWindow");
 const blankWindows = new WeakMap();
 Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
@@ -148,9 +257,7 @@ for (const name of ["pushState", "replaceState"]) {
     const destination = new URL(originalUrl(String(url)), pageUrl);
     if (destination.origin !== new URL(pageUrl).origin) throw new DOMException("History cannot change the site's origin.", "SecurityError");
     const result = native.call(this, state, unused, resource(destination.href, "document"));
-    if (base === pageUrl) base = destination.href;
-    pageUrl = destination.href;
-    send({ type: "bromine:history", requestUrl, url: pageUrl, replace: name === "replaceState" });
+    updatePageUrl(destination.href, name === "replaceState");
     return result;
   };
 }
@@ -163,31 +270,50 @@ function attributeValue(element, name, value) {
     nativeSetAttribute.call(element, "crossorigin", "use-credentials");
   }
   if (name === "style") return cssResources(value);
-  if (["srcset", "imagesrcset"].includes(name) && !value.includes("data:")) return value.split(",").map((candidate) => {
-    const [url, ...descriptor] = candidate.trim().split(/\s+/);
-    return [resource(url, "image"), ...descriptor].join(" ");
-  }).join(", ");
+  if (["srcset", "imagesrcset"].includes(name)) return mapSrcset(value, (url) => resource(url, "image"));
   const types = { img: "image", script: "script", link: "stylesheet", iframe: "subdocument", video: "media", audio: "media", source: "media", a: "document", area: "document" };
   if (["src", "href", "poster", "background"].includes(name) && !value.trim().startsWith("#")) {
     if (["img", "script", "link", "audio", "video"].includes(tag)) nativeSetAttribute.call(element, "crossorigin", "use-credentials");
-    return resource(value, types[tag] || "other");
+    const module = tag === "script" && (nativeGetAttribute.call(element, "type") || "").toLowerCase() === "module" ||
+      tag === "link" && (nativeGetAttribute.call(element, "rel") || "").toLowerCase().split(/\s+/).includes("modulepreload");
+    return resource(value, module ? "script" : types[tag] || "other", module);
   }
   return value;
 }
 Element.prototype.setAttribute = function (name, value) {
-  return nativeSetAttribute.call(this, name, attributeValue(this, name, String(value)));
+  const result = nativeSetAttribute.call(this, name, attributeValue(this, name, String(value)));
+  if (["type", "rel"].includes(String(name).toLowerCase())) refreshModuleResource(this);
+  return result;
 };
+function refreshModuleResource(element) {
+  const attribute = element.tagName === "SCRIPT" ? "src" : element.tagName === "LINK" ? "href" : null;
+  if (!attribute) return;
+  const value = nativeGetAttribute.call(element, attribute);
+  if (value) nativeSetAttribute.call(element, attribute, attributeValue(element, attribute, value));
+}
+for (const [constructor, property] of [[HTMLScriptElement, "type"], [HTMLLinkElement, "rel"]]) {
+  const descriptor = Object.getOwnPropertyDescriptor(constructor.prototype, property);
+  Object.defineProperty(constructor.prototype, property, {
+    ...descriptor, set(value) { descriptor.set.call(this, value); refreshModuleResource(this); },
+  });
+}
 for (const [constructor, property] of [
   [HTMLImageElement, "src"], [HTMLImageElement, "srcset"], [HTMLScriptElement, "src"],
   [HTMLImageElement, "crossOrigin"], [HTMLScriptElement, "crossOrigin"], [HTMLLinkElement, "crossOrigin"],
   [HTMLMediaElement, "crossOrigin"],
   [HTMLLinkElement, "href"], [HTMLIFrameElement, "src"], [HTMLMediaElement, "src"],
   [HTMLSourceElement, "src"], [HTMLSourceElement, "srcset"], [HTMLAnchorElement, "href"],
+  [HTMLAreaElement, "href"], [HTMLFormElement, "action"], [HTMLButtonElement, "formAction"],
+  [HTMLInputElement, "src"], [HTMLInputElement, "formAction"], [HTMLObjectElement, "data"],
 ]) {
   const descriptor = Object.getOwnPropertyDescriptor(constructor.prototype, property);
   if (!descriptor?.set) continue;
   Object.defineProperty(constructor.prototype, property, {
     ...descriptor,
+    get() {
+      const value = descriptor.get.call(this);
+      return property === "srcset" ? mapSrcset(value, sourceUrl) : sourceUrl(value);
+    },
     set(value) { descriptor.set.call(this, attributeValue(this, property, String(value))); },
   });
 }
@@ -438,7 +564,7 @@ document.addEventListener("DOMContentLoaded", () => {
     requestUrl,
     url: pageUrl,
     title: document.title,
-    favicon,
+    favicon: favicon ? resource(favicon, "image") : undefined,
     error: document.querySelector("[data-proxy-error]")?.textContent,
   });
   const refresh = document.querySelector("[data-proxy-refresh]");

@@ -366,8 +366,8 @@ function renderPage(tab) {
   saveSession();
 }
 
-function recordNavigation(url, tab, title = new URL(url).hostname) {
-  tab.stack.splice(tab.position + 1);
+function recordNavigation(url, tab, title = new URL(url).hostname, replace = false) {
+  tab.stack.splice(tab.position + (replace ? 0 : 1));
   tab.stack.push({ url, title });
   tab.position = tab.stack.length - 1;
   history.unshift({ url: redactUrl(url), title, time: Date.now(), favicon: "/favicon.svg" });
@@ -375,10 +375,10 @@ function recordNavigation(url, tab, title = new URL(url).hostname) {
   writeStore("bromine:history", history);
 }
 
-function navigate(value, tab = current()) {
+function navigate(value, tab = current(), replace = false) {
   try {
     const url = resolveInput(value);
-    recordNavigation(url, tab);
+    recordNavigation(url, tab, undefined, replace);
     renderPage(tab, true);
   } catch (error) {
     notice(error.message);
@@ -602,7 +602,7 @@ window.addEventListener("message", (event) => {
   if (data.type === "bromine:cookie") {
     persistSiteCookie(tab, data);
   } else if (data.type === "bromine:navigate" && typeof data.url === "string") {
-    navigate(data.url, data.newTab ? createTab() : tab);
+    navigate(data.url, data.newTab ? createTab() : tab, data.replace === true && !data.newTab);
   } else if (data.type === "bromine:form" && typeof data.url === "string") {
     try {
       const url = resolveInput(data.url);

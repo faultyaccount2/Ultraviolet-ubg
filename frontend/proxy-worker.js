@@ -1,10 +1,22 @@
-import { resourceUrl } from "../shared/proxy-url.js";
+import { resourceUrl, moduleUrl } from "../shared/proxy-url.js";
 import { proxyRequest } from "../shared/proxy-request.js";
 import { applySiteCookie, cookieDomainMatches, cookieMatches, decodeCookieState, encodeCookieState } from "../shared/cookie-jar.js";
 import { MemoryCache, MemoryCacheStorage } from "./memory-cache.js";
 
 const config = self.BROMINE_WORKER_CONFIG;
 delete self.BROMINE_WORKER_CONFIG;
+const siteLocation = { toString: () => config.url, [Symbol.toPrimitive]: () => config.url };
+for (const name of ["href", "origin", "protocol", "host", "hostname", "port", "pathname", "search", "hash"]) {
+  Object.defineProperty(siteLocation, name, { enumerable: true, get: () => new URL(config.url)[name] });
+}
+const siteSelf = new Proxy(self, {
+  get: (target, name) => name === "location" ? siteLocation : Reflect.get(target, name, target),
+});
+Object.defineProperties(self, {
+  __bromineLocation: { value: siteLocation },
+  __bromineLocationObject: { value: (object) => object === self ? siteSelf : object },
+  __bromineModuleUrl: { value: (value, scriptUrl) => moduleUrl(value, scriptUrl, config.proxyOrigin, { ...config, type: "script", module: true }) },
+});
 const resource = (value, type = "xmlhttprequest") => {
   const url = new URL(String(value), config.url);
   if (url.origin === config.proxyOrigin && url.pathname === "/api/proxy" && url.searchParams.has("url")) {

@@ -188,6 +188,100 @@ test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST
   expect(errors).toEqual([]);
 });
 
+test("site URL getters and sandbox feature detection do not expose proxy implementation URLs", async ({ page }) => {
+  test.skip(production, "Deterministic URL and capability fixtures are local-only.");
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  await expect(frame.locator("#script-status")).toHaveText("Script loaded");
+  expect(await frame.locator("body").evaluate(() => ({
+    url: document.URL,
+    uri: document.documentURI,
+    base: document.baseURI,
+    script: document.querySelector("script[src*='app.js']").src,
+    scriptAttribute: document.querySelector("script[src*='app.js']").getAttribute("src"),
+    image: document.querySelector("#dynamic-image").src,
+    link: document.querySelector("a").href,
+    form: document.querySelector("form").action,
+    serviceWorker: "serviceWorker" in navigator,
+  }))).toEqual({
+    url: fixture, uri: fixture, base: `${fixture}assets/`,
+    script: `${fixture}assets/app.js`,
+    scriptAttribute: `${fixture}assets/app.js`,
+    image: `${fixture}assets/image.svg?dynamic=1`,
+    link: `${fixture}next?hello=world#section`,
+    form: `${fixture}get`,
+    serviceWorker: false,
+  });
+  expect(await page.evaluate(() => "serviceWorker" in navigator)).toBe(true);
+  await expect(page.locator('.tab[aria-selected="true"] img')).toHaveAttribute("src", /url=https%3A%2F%2Ffixture\.example%2Fassets%2Ficon\.svg/);
+  expect(await frame.locator("body").evaluate((body) => {
+    const image = new Image();
+    image.srcset = "data:image/svg+xml,%3Csvg%3E%3C/svg%3E 1x, /assets/image.svg 2x";
+    body.append(image);
+    return { value: image.srcset, attribute: image.getAttribute("srcset") };
+  })).toEqual({
+    value: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E 1x, https://fixture.example/assets/image.svg 2x",
+    attribute: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E 1x, https://fixture.example/assets/image.svg 2x",
+  });
+});
+
+test("module graphs, dynamic imports and import.meta assets load through the proxy", async ({ page }) => {
+  test.skip(production, "Deterministic module fixtures are local-only.");
+  const errors = [];
+  const modules = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/proxy" && url.searchParams.get("url")?.includes("/modules/")) modules.push(url);
+  });
+  await page.goto("/");
+  const frame = await openTarget(page, "https://fixture.example/module-page#start");
+  await expect(frame.locator("#module-static")).toHaveText("Module graph loaded");
+  await expect(frame.locator("#module-dynamic")).toHaveText("Dynamic module loaded");
+  await expect(frame.locator("#module-inline-url")).toHaveText("https://fixture.example/module-page#start");
+  await expect(frame.locator("#module-added")).toHaveText("Added module loaded");
+  await expect.poll(() => frame.locator("#module-image").evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+  expect(await frame.locator("#module-image").evaluate((image) => image.src)).toBe("https://fixture.example/assets/image.svg?module=1");
+  expect(modules.length).toBeGreaterThanOrEqual(3);
+  expect(modules.every((url) => url.searchParams.get("module") === "1")).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("site scripts see their own routes and navigate without leaving the isolated proxy", async ({ page }) => {
+  test.skip(production, "Deterministic routing fixtures are local-only.");
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  const frame = await openTarget(page, "https://fixture.example/route-page#start");
+  await expect(frame.locator("#inline-route")).toHaveText("https://fixture.example/route-page#start");
+  await expect(frame.locator("#script-route")).toHaveText(Array(4).fill("https://fixture.example/route-page#start").join("\n"));
+  await expect(page.getByRole("tab", { selected: true })).toContainText("Route fixture");
+  await frame.getByRole("button", { name: "Push route" }).click();
+  await expect(page.locator("#address")).toHaveValue("https://fixture.example/route-page?state=1");
+  await expect(frame.locator("#script-route")).toHaveText(Array(4).fill("https://fixture.example/route-page?state=1").join("\n"));
+  await frame.getByRole("button", { name: "Change hash" }).click();
+  await expect(frame.locator("#hash-route")).toHaveText("https://fixture.example/route-page?state=1#changed");
+  await expect(page.locator("#address")).toHaveValue("https://fixture.example/route-page?state=1#changed");
+  await frame.getByRole("button", { name: "Replace route" }).click();
+  await expect(frame.getByRole("heading", { name: "Next page", exact: true })).toBeVisible();
+  await expect(page.locator("#address")).toHaveValue("https://fixture.example/next?replaced=1");
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(frame.getByRole("heading", { name: "Route fixture", exact: true })).toBeVisible();
+  await expect(page.locator("#address")).toHaveValue("https://fixture.example/route-page?state=1");
+  await frame.getByRole("button", { name: "Inline navigation" }).click();
+  await expect(page.locator("#address")).toHaveValue("https://fixture.example/next?inline=1");
+  await expect(frame.getByRole("heading", { name: "Next page", exact: true })).toBeVisible();
+  await openTarget(page, "https://fixture.example/route-page");
+  await frame.getByRole("button", { name: "Assign route" }).click();
+  await expect(page.locator("#address")).toHaveValue("https://fixture.example/next?assigned=1");
+  await expect(frame.getByRole("heading", { name: "Next page", exact: true })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/");
+  expect(await frame.locator("body").evaluate(() => {
+    try { return parent.document.title; } catch (error) { return error.name; }
+  })).toBe("SecurityError");
+  expect(errors).toEqual([]);
+});
+
 test("proxied site cookies persist locally and return only to their matching host", async ({ page }) => {
   test.skip(production, "Cookie persistence uses deterministic local fixtures.");
   await page.goto("/");
@@ -277,7 +371,10 @@ test("classic workers proxy fetch and cache responses without exposing bootstrap
     worker.onerror = (event) => { clearTimeout(timer); worker.terminate(); reject(new Error(event.message)); };
     worker.postMessage("run");
   }));
-  expect(response).toEqual({ text: expect.stringContaining("name=worker"), isCache: true });
+  expect(response).toEqual({
+    text: expect.stringContaining("name=worker"), isCache: true,
+    url: "https://fixture.example/assets/worker.js", workerUrl: "https://fixture.example/assets/worker.js",
+  });
 });
 
 test("fetch preserves a Request body's method, headers and payload while proxying", async ({ page }) => {

@@ -17,6 +17,9 @@ importers:
       astring:
         specifier: ^1.9.0
         version: 1.9.0
+      eslint-scope:
+        specifier: ^8.4.0
+        version: 8.4.0
       events:
         specifier: ^3.3.0
         version: 3.3.0

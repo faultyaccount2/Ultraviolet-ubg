@@ -1,4 +1,4 @@
-export const proxyParameters = new Set(["url", "adblock", "origin", "type", "logging", "cache"]);
+export const proxyParameters = new Set(["url", "adblock", "origin", "type", "logging", "cache", "module"]);
 
 export function proxyUrl(value, options = {}) {
   const url = new URL(value);
@@ -10,6 +10,7 @@ export function proxyUrl(value, options = {}) {
   if (options.type) query.set("type", options.type);
   if (options.logging !== undefined) query.set("logging", options.logging ? "1" : "0");
   if (options.cache !== undefined) query.set("cache", options.cache ? "1" : "0");
+  if (options.module) query.set("module", "1");
   return `/api/proxy?${query}${fragment}`;
 }
 
@@ -33,4 +34,10 @@ export function resourceUrl(value, base, proxyOrigin, options = {}) {
   if (url.origin === proxyOrigin) url = new URL(url.pathname + url.search + url.hash, new URL(base).origin);
   if (!["http:", "https:"].includes(url.protocol)) return url.href;
   return proxyOrigin + proxyUrl(url.href, options);
+}
+
+export function moduleUrl(value, base, proxyOrigin, options = {}) {
+  const specifier = String(value);
+  if (!/^(?:\.{0,2}\/|[a-z][a-z\d+.-]*:)/i.test(specifier)) return specifier;
+  return resourceUrl(specifier, base, proxyOrigin, { ...options, type: "script", module: true });
 }

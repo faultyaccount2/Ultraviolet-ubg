@@ -1,13 +1,85 @@
 import { parse, parseFragment, serialize } from "parse5";
 import safeParser from "postcss-safe-parser";
 import valueParser from "postcss-value-parser";
-import { proxyUrl } from "../shared/proxy-url.js";
+import { parseModule, parseScript } from "meriyah";
+import { analyze } from "eslint-scope";
+import { proxyUrl, moduleUrl } from "../shared/proxy-url.js";
+import { mapSrcset } from "../shared/srcset.js";
 
 function rewriteUrl(value, base, options) {
   if (!value.trim() || value.trim().startsWith("#")) return value;
   const url = new URL(value, base);
   if (!["http:", "https:"].includes(url.protocol)) return value;
   return proxyUrl(url.href, options);
+}
+
+export function rewriteJavaScript(source, target, options = {}) {
+  if (!options.module && !/\blocation\b|\bimport\s*(?:\(|\/[/*])/.test(source)) return source;
+  const ast = (options.module ? parseModule : parseScript)(source, {
+    ranges: true, next: true, webcompat: true, globalReturn: !options.module,
+  });
+  const changes = [];
+  const parents = new WeakMap();
+  const wrap = (node, prefix, suffix) => {
+    changes.push({ start: node.start, end: node.start, order: -node.end, value: prefix });
+    changes.push({ start: node.end, end: node.end, order: -node.start, value: suffix });
+  };
+  const hasLocation = (node) => node?.type === "ObjectPattern" && node.properties.some((property) =>
+    property.type === "Property" && (!property.computed && property.key.name === "location" || property.key.value === "location"));
+  const nodes = [[ast, null, false]];
+  while (nodes.length) {
+    const [node, parent, optionalChain] = nodes.pop();
+    if (!node || typeof node !== "object") continue;
+    if (parent) parents.set(node, parent);
+    if (["ImportDeclaration", "ExportNamedDeclaration", "ExportAllDeclaration"].includes(node.type) && node.source) {
+      changes.push({
+        start: node.source.start, end: node.source.end,
+        value: JSON.stringify(moduleUrl(node.source.value, target, "", options)),
+      });
+    } else if (node.type === "ImportExpression") {
+      wrap(node.source, "globalThis.__bromineModuleUrl(", `,${JSON.stringify(target)})`);
+    } else if (node.type === "MemberExpression" && node.object.type === "MetaProperty" &&
+        node.object.meta.name === "import" &&
+        (!node.computed && node.property.name === "url" || node.computed && node.property.value === "url")) {
+      changes.push({ start: node.start, end: node.end, value: options.inlineModule ? "globalThis.__bromineDocumentUrl" : JSON.stringify(target) });
+      continue;
+    } else if (node.type === "MemberExpression" && node.object.type !== "Super" && !optionalChain &&
+        (!node.computed && node.property.name === "location" || node.computed && node.property.value === "location")) {
+      wrap(node.object, "globalThis.__bromineLocationObject(", ")");
+    } else if (node.type === "VariableDeclarator" && node.init && hasLocation(node.id)) {
+      wrap(node.init, "globalThis.__bromineLocationObject(", ")");
+    } else if (node.type === "AssignmentExpression" && hasLocation(node.left)) {
+      wrap(node.right, "globalThis.__bromineLocationObject(", ")");
+    }
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) if (child?.type) nodes.push([child, node, optionalChain || node.type === "ChainExpression"]);
+      }
+      else if (value?.type) nodes.push([value, node, optionalChain || node.type === "ChainExpression"]);
+    }
+  }
+  const scopes = analyze(ast, {
+    ecmaVersion: 2024, sourceType: options.module ? "module" : "script", ignoreEval: true, fallback: "iteration",
+  });
+  for (const reference of scopes.globalScope.through) {
+    const node = reference.identifier;
+    if (node.name !== "location" || reference.tainted) continue;
+    const parent = parents.get(node);
+    const shorthand = parent?.type === "Property" && parent.shorthand && parent.value === node;
+    changes.push({
+      start: node.start, end: node.end,
+      value: `${shorthand ? "location:" : ""}globalThis.__bromineLocation${reference.isWrite() ? ".href" : ""}`,
+    });
+  }
+  changes.sort((left, right) => left.start - right.start || left.end - right.end || (left.order || 0) - (right.order || 0));
+  const output = [];
+  let position = 0;
+  for (const change of changes) {
+    output.push(source.slice(position, change.start), change.value);
+    position = change.end;
+  }
+  output.push(source.slice(position));
+  return output.join("");
 }
 
 export function rewriteCss(source, base, options = {}) {
@@ -42,25 +114,7 @@ export function rewriteCss(source, base, options = {}) {
 }
 
 function rewriteSrcset(value, base, options) {
-  const candidates = [];
-  let position = 0;
-  while (position < value.length) {
-    while (/[\s,]/.test(value[position] || "") && position < value.length) position++;
-    const start = position;
-    while (position < value.length && !/\s/.test(value[position])) position++;
-    let url = value.slice(start, position);
-    if (!url) break;
-    let descriptor = "";
-    if (url.endsWith(",")) url = url.replace(/,+$/, "");
-    else {
-      const begin = position;
-      while (position < value.length && value[position] !== ",") position++;
-      descriptor = value.slice(begin, position).trim();
-      position++;
-    }
-    candidates.push(`${rewriteUrl(url, base, options)}${descriptor ? ` ${descriptor}` : ""}`);
-  }
-  return candidates.join(", ");
+  return mapSrcset(value, (url) => rewriteUrl(url, base, options));
 }
 
 const attr = (node, name) => node.attrs?.find((item) => item.name === name)?.value;
@@ -89,6 +143,9 @@ export function rewriteHtml(source, target, requestUrl, adblock = true, extra = 
   for (const node of nodes) {
     if (!node.tagName) continue;
     const rel = (attr(node, "rel") || "").toLowerCase();
+    const isModule = node.tagName === "script" && (attr(node, "type") || "").toLowerCase() === "module" ||
+      node.tagName === "link" && rel.includes("modulepreload");
+    const isScriptLink = node.tagName === "link" && (isModule || rel.split(/\s+/).includes("preload") && attr(node, "as") === "script");
     const httpEquiv = (attr(node, "http-equiv") || "").toLowerCase();
     if (node.tagName === "base" || node.tagName === "meta" && httpEquiv === "content-security-policy" ||
         node.tagName === "link" && /(?:preconnect|dns-prefetch)/.test(rel)) {
@@ -115,21 +172,29 @@ export function rewriteHtml(source, target, requestUrl, adblock = true, extra = 
     for (const item of node.attrs) {
       let type;
       if (item.name === "href" && ["a", "area", "link"].includes(node.tagName)) {
-        type = node.tagName !== "link" ? "document" : rel.includes("stylesheet") ? "stylesheet" : rel.includes("icon") ? "image" : "other";
+        type = node.tagName !== "link" ? "document" : isScriptLink ? "script" : rel.includes("stylesheet") ? "stylesheet" : rel.includes("icon") ? "image" : "other";
       } else if (item.name === "src") {
         type = node.tagName === "script" ? "script" : ["img", "input"].includes(node.tagName) ? "image" : node.tagName === "iframe" ? "subdocument" : "media";
       } else if (item.name === "poster" || item.name === "background") type = "image";
       else if (item.name === "data" && node.tagName === "object") type = "object";
-      if (type) item.value = rewriteUrl(item.value, base, { ...options, type });
+      if (type) item.value = rewriteUrl(item.value, base, { ...options, type, module: isModule });
       if (item.name === "srcset" || item.name === "imagesrcset") item.value = rewriteSrcset(item.value, base, { ...options, type: "image" });
       if (item.name === "style") item.value = rewriteCss(item.value, base, options);
+      if (item.name.startsWith("on")) item.value = rewriteJavaScript(item.value, base, options);
     }
     if (node.tagName === "img" || node.tagName === "script" && attr(node, "src") ||
-        node.tagName === "link" && rel.includes("stylesheet") || ["audio", "video"].includes(node.tagName)) {
+        node.tagName === "link" && rel.includes("stylesheet") || isScriptLink || ["audio", "video"].includes(node.tagName)) {
       setAttr(node, "crossorigin", "use-credentials");
     }
     if (node.tagName === "style") {
       for (const child of node.childNodes) if (child.nodeName === "#text") child.value = rewriteCss(child.value, base, options);
+    }
+    const scriptType = (attr(node, "type") || "").toLowerCase();
+    if (node.tagName === "script" && !attr(node, "src") &&
+        (!scriptType || isModule || /^(?:application|text)\/(?:javascript|ecmascript|x-javascript)(?:;|$)/.test(scriptType))) {
+      for (const child of node.childNodes) if (child.nodeName === "#text") {
+        child.value = rewriteJavaScript(child.value, base, { ...options, module: isModule, inlineModule: isModule });
+      }
     }
   }
   const head = nodes.find((node) => node.tagName === "head");

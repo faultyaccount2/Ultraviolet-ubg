@@ -21,6 +21,24 @@ export function fixtureResponse(url, options) {
   else if (url.pathname === "/private-redirect") { status = 302; headers.location = "http://127.0.0.1/"; body = ""; }
   else if (url.pathname === "/loop") { status = 302; headers.location = "/loop"; body = ""; }
   else if (url.pathname === "/next") body = `<title>Next page</title><h1>Next page</h1><p>${url.search}</p>`;
+  else if (url.pathname === "/module-page") body = `<title>Module fixture</title><base href="/modules/"><link rel="modulepreload" href="/modules/entry.js">
+    <h1>Module fixture</h1><p id="module-static">Waiting</p><p id="module-dynamic">Waiting</p><p id="module-inline-url"></p>
+    <p id="module-added">Waiting</p><img id="module-image" alt="Module asset">
+    <script type="module">import { message, asset } from "./entry.js";
+      document.querySelector("#module-static").textContent = message;
+      document.querySelector("#module-image").src = asset;
+      document.querySelector("#module-inline-url").textContent = import.meta.url;
+      const file = "lazy"; const lazy = await import("./" + file + ".js");
+      document.querySelector("#module-dynamic").textContent = lazy.message;
+      const script = document.createElement("script"); script.src = "./added.js"; script.type = "module"; document.body.append(script);
+    </script>`;
+  else if (url.pathname === "/route-page") body = `<title>Route fixture</title><h1>Route fixture</h1>
+    <p id="inline-route"></p><p id="script-route"></p><p id="hash-route"></p>
+    <button id="push-route">Push route</button><button id="hash-button">Change hash</button>
+    <button id="replace-route">Replace route</button><button id="assign-route">Assign route</button>
+    <button onclick="location.href='/next?inline=1'">Inline navigation</button>
+    <script>document.querySelector("#inline-route").textContent = location.href;</script>
+    <script src="/route.js"></script>`;
   else if (url.pathname === "/cookie-check") {
     headers["set-cookie"] = "fixture_http=secret; Path=/; HttpOnly; Secure";
     body = `<title>Cookie check</title><h1>Cookie check</h1><p id="stored-cookie">${options.headers.cookie || "(none)"}</p>`;
@@ -58,7 +76,29 @@ export function fixtureResponse(url, options) {
     body = 'document.addEventListener("DOMContentLoaded",()=>{document.cookie="fixture=1";localStorage.setItem("fixture","isolated");document.getElementById("script-status").dataset.cache=("caches" in window&&window.caches)?"available":"unavailable";document.getElementById("script-status").textContent="Script loaded";fetch(new Request("/data?value=hello",{mode:"same-origin",credentials:"include",headers:{"X-SG-E":"fixture"}})).then(r=>r.text()).then(text=>document.getElementById("fetch-status").textContent=text);const xhr=new XMLHttpRequest();xhr.open("GET","/data?value=xhr");xhr.withCredentials=true;xhr.setRequestHeader("X-Fixture","1");xhr.onload=()=>{document.getElementById("script-status").dataset.xhr=xhr.responseText};xhr.send();const image=document.createElement("img");image.id="dynamic-image";image.src="/assets/image.svg?dynamic=1";document.body.append(image);const block=document.createElement("div");block.id="dynamic-html";block.innerHTML=\'<img src="/assets/image.svg?html=1" alt="Dynamic HTML">\';document.body.append(block);});';
   } else if (url.pathname === "/assets/worker.js") {
     headers["content-type"] = "application/javascript";
-    body = 'self.addEventListener("message",async()=>{const cache=await caches.open("worker-fixture");const response=await fetch(new Request("/post",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:"name=worker"}));const text=await response.text();await cache.put("/data?value=worker",new Response(text));self.postMessage({text:await(await cache.match("/data?value=worker")).text(),isCache:cache instanceof Cache});});';
+    body = 'self.addEventListener("message",async()=>{const cache=await caches.open("worker-fixture");const response=await fetch(new Request("/post",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:"name=worker"}));const text=await response.text();await cache.put("/data?value=worker",new Response(text));self.postMessage({text:await(await cache.match("/data?value=worker")).text(),isCache:cache instanceof Cache,url:location.href,workerUrl:self.location.href});});';
+  } else if (url.pathname === "/route.js") {
+    headers["content-type"] = "application/javascript";
+    body = `const alias = document.defaultView;
+      function showRoute() {
+        const { location: picked } = alias;
+        document.querySelector("#script-route").textContent = [location.href, alias.location.href, document.location.href, picked.href].join("\\n");
+      }
+      showRoute();
+      document.querySelector("#push-route").onclick = () => { history.pushState({}, "", "/route-page?state=1"); showRoute(); };
+      document.querySelector("#hash-button").onclick = () => { location.hash = "changed"; showRoute(); };
+      document.querySelector("#assign-route").onclick = () => { alias.location = "/next?assigned=1"; };
+      document.querySelector("#replace-route").onclick = () => { alias.location.replace("/next?replaced=1"); };
+      addEventListener("hashchange", (event) => { document.querySelector("#hash-route").textContent = event.newURL; });`;
+  } else if (url.pathname === "/modules/entry.js") {
+    headers["content-type"] = "text/javascript";
+    body = 'export { message } from "./nested/value.js"; export const asset = new URL("../assets/image.svg?module=1", import.meta.url).href;';
+  } else if (url.pathname === "/modules/nested/value.js") {
+    headers["content-type"] = "text/javascript"; body = 'export const message = "Module graph loaded";';
+  } else if (url.pathname === "/modules/lazy.js") {
+    headers["content-type"] = "text/javascript"; body = 'export const message = "Dynamic module loaded";';
+  } else if (url.pathname === "/modules/added.js") {
+    headers["content-type"] = "text/javascript"; body = 'export const added = true; document.querySelector("#module-added").textContent = "Added module loaded";';
   } else if (url.pathname === "/data") { headers["content-type"] = "text/plain"; body = "Fetch loaded: " + url.searchParams.get("value"); }
   else if (["/assets/image.svg", "/assets/icon.svg"].includes(url.pathname)) {
     headers["content-type"] = "image/svg+xml";
