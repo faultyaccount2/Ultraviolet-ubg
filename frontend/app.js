@@ -47,7 +47,6 @@ function writeStore(name, value) {
 const themes = ["mocha", "charcoal", "light", "system"];
 const engines = {
   duckduckgo: "https://duckduckgo.com/?q=",
-  bing: "https://www.bing.com/search?q=",
   google: "https://www.google.com/search?q=",
 };
 const colorLabels = {
@@ -63,7 +62,7 @@ const defaults = {
   textSize: 14, logging: false, cacheEnabled: false, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",
 };
 const settings = { ...defaults, ...readStore("bromine:settings", defaults,
-  (value) => value && themes.includes(value.theme) && Object.hasOwn(engines, value.engine) && typeof value.adblock === "boolean" &&
+  (value) => value && themes.includes(value.theme) && (Object.hasOwn(engines, value.engine) || value.engine === "bing") && typeof value.adblock === "boolean" &&
     (value.mode === undefined || ["automatic", "direct", "proxy"].includes(value.mode)) &&
     (value.proxyDomains === undefined || Array.isArray(value.proxyDomains) && value.proxyDomains.every((rule) => typeof rule === "string")) &&
     (value.accent === undefined || /^#[a-f\d]{6}$/i.test(value.accent)) &&
@@ -71,6 +70,11 @@ const settings = { ...defaults, ...readStore("bromine:settings", defaults,
       Object.entries(value.colors).every(([key, color]) => Object.hasOwn(colorLabels, key) && typeof color === "string" && hexColor.test(color))) &&
     ["opacity", "blur", "saturation", "radius", "textSize", "concurrent", "cacheLimit"].every((key) => value[key] === undefined || Number.isFinite(value[key])) &&
     (value.homepage === undefined || typeof value.homepage === "string")) };
+if (settings.engine === "bing") {
+  settings.engine = defaults.engine;
+  writeStore("bromine:settings", settings);
+  notice("Your removed search engine has been replaced with DuckDuckGo. Other settings are unchanged.");
+}
 const sites = readStore("bromine:sites", {}, (value) => value && !Array.isArray(value) && typeof value === "object" &&
   Object.keys(value).length <= 500 && Object.values(value).every((site) => site && ["automatic", "direct", "proxy"].includes(site.mode) && typeof site.adblock === "boolean" && typeof site.cache === "boolean"));
 let bookmarks = readStore("bromine:bookmarks", [], (value) => Array.isArray(value) && value.length <= 500 &&

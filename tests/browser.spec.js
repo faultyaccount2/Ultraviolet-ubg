@@ -303,7 +303,7 @@ test("proxied site cookies persist locally and return only to their matching hos
   expect(sentCookies).toContain("fixture_http=secret");
   expect(await frame.locator("body").evaluate(async () =>
     await (await fetch("/cookie-echo", { credentials: "omit" })).text())).toBe("(none)");
-  frame = await openTarget(page, "https://www.bing.com/cookie-check");
+  frame = await openTarget(page, "https://www.google.com/cookie-check");
   await expect(frame.locator("#stored-cookie")).toHaveText("(none)");
 });
 
@@ -446,12 +446,33 @@ test("search uses the selected engine and correct encoded query", async ({ page 
   await expect(page.frameLocator(".tab-page:not([hidden]) iframe").getByRole("heading", { name: "Results for hello world" })).toBeVisible();
   await expect(page.locator("#address")).toHaveValue("https://duckduckgo.com/?q=hello%20world");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByLabel("Search engine", { exact: true }).selectOption("bing");
+  await expect(page.getByLabel("Search engine", { exact: true }).locator("option")).toHaveText(["DuckDuckGo", "Google"]);
+  await page.getByLabel("Search engine", { exact: true }).selectOption("google");
   await page.getByRole("button", { name: "Close settings" }).click();
   await page.reload();
   await openTarget(page, "another search");
-  await expect(page.locator("#address")).toHaveValue("https://www.bing.com/search?q=another%20search");
+  await expect(page.locator("#address")).toHaveValue("https://www.google.com/search?q=another%20search");
   await expect(page.frameLocator(".tab-page:not([hidden]) iframe").getByRole("heading", { name: "Results for another search" })).toBeVisible();
+});
+
+test("removed search engine migrates without resetting other saved preferences", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("bromine:settings") || "{}");
+    localStorage.setItem("bromine:settings", JSON.stringify({
+      ...saved, theme: "charcoal", engine: "bing", adblock: false, colors: { background: "#123456" },
+    }));
+  });
+  await page.reload();
+  await expect(page.locator("#notice")).toContainText("replaced with DuckDuckGo");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByLabel("Search engine", { exact: true })).toHaveValue("duckduckgo");
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("bromine:settings")));
+  expect(saved).toMatchObject({
+    theme: "charcoal", engine: "duckduckgo", adblock: false, colors: { background: "#123456" },
+  });
+  await page.reload();
+  await expect(page.locator("#notice")).toBeHidden();
 });
 
 test("color pickers and hex fields update the UI, persist, and reset to the theme", async ({ page }) => {

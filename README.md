@@ -24,8 +24,9 @@ The UI provides independent draggable/pinnable tabs, duplicate/reopen/session
 controls, navigation stacks, reload/stop/home, search, bookmarks with
 import/export, history filtering/clearing, downloads, a request inspector,
 glass appearance settings and fullscreen. Web pages stay inside the app.
-DuckDuckGo is the default search engine for new browser settings; select Bing
-or Google in Settings to change it. Existing saved engine choices are retained.
+DuckDuckGo is the default search engine; Google is also available in Settings.
+Saved selections of the removed search provider migrate to DuckDuckGo without
+resetting other preferences.
 Settings also provides saved color pickers and #RRGGBB inputs for the background,
 surfaces, hover, accent, text, page frame, toolbar, tab bar, status bar and borders.
 Reset colors restores the selected theme. Frame color does not recolor upstream

@@ -71,7 +71,6 @@
 @@||bilibili.com^
 @@||bilibili.tv^
 @@||bilivideo.com^
-@@||bing.com^
 @@||bitbucket.io^
 @@||bitbucket.org^
 @@||blob.core.windows.net^

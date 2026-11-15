@@ -1,5 +1,5 @@
 export const compatibility = [
-  ["Search", ["google.com", "bing.com", "duckduckgo.com"]],
+  ["Search", ["google.com", "duckduckgo.com"]],
   ["Email", ["gmail.com", "outlook.com"]],
   ["Social / chat", ["discord.com", "instagram.com", "facebook.com", "whatsapp.com", "messenger.com", "threads.net", "reddit.com", "x.com", "tiktok.com", "telegram.org"]],
   ["Media", ["youtube.com", "twitch.tv", "spotify.com", "soundcloud.com", "bandcamp.com", "vimeo.com", "dailymotion.com", "rumble.com", "kick.com"]],

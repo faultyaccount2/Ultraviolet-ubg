@@ -402,7 +402,7 @@ test("lazy platform JSON parsers are not invoked when forwarding raw request byt
 test("XML POST bodies are forwarded unchanged for search APIs", async () => {
   const body = Buffer.from("<SearchRequest><Query>cats</Query></SearchRequest>");
   let outgoing;
-  const result = await invoke("https://www.bing.com/web/xlsc.aspx", {
+  const result = await invoke("https://fixture.example/search.xml", {
     method: "POST",
     body,
     requestHeaders: { "content-type": "text/xml" },
