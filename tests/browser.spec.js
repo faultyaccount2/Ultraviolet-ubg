@@ -414,15 +414,23 @@ test("authenticated site fetch and XHR preserve tokens and mutations without cro
       request.send('{"content":"deleted"}');
     });
     const forged = await fetch("/authenticated-api", { headers: { "X-Bromine-Site-Authorization": "Bearer fixture-user" } });
+    const emptyAuthorization = await new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("POST", "/authenticated-api");
+      request.setRequestHeader("Authorization", "");
+      request.onload = () => resolve(request.status);
+      request.onerror = () => reject(new Error("Signed-out XHR failed."));
+      request.send();
+    });
     let crossOrigin;
     try { await fetch("https://www.google.com/authenticated-api", { headers }); }
     catch (error) { crossOrigin = error.name; }
-    return { fetched, xhr, forgedStatus: forged.status, crossOrigin };
+    return { fetched, xhr, forgedStatus: forged.status, emptyAuthorization, crossOrigin };
   });
   expect(result).toEqual({
     fetched: { authenticated: true, method: "PATCH", body: '{"content":"edited"}' },
     xhr: { authenticated: true, method: "DELETE", body: '{"content":"deleted"}' },
-    forgedStatus: 401, crossOrigin: "SecurityError",
+    forgedStatus: 401, emptyAuthorization: 401, crossOrigin: "SecurityError",
   });
 });
 

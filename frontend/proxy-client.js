@@ -379,6 +379,7 @@ XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
   const lower = String(name).toLowerCase();
   if (["x-bromine-site-cookies", "x-bromine-site-authorization"].includes(lower)) return;
   if (lower === "authorization") {
+    if (!String(value).trim()) return;
     return nativeSetRequestHeader.call(this, "X-Bromine-Site-Authorization", siteAuthorization(value, xhrTargets.get(this), pageUrl));
   }
   return nativeSetRequestHeader.call(this, name, value);
