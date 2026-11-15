@@ -8,6 +8,23 @@ import { isPublicAddress, validateNavigation } from "../shared/address.js";
 export { isPublicAddress } from "../shared/address.js";
 
 export const MAX_REWRITE_BYTES = 64 * 1024 * 1024;
+const retryableDnsErrors = new Set(["EBUSY", "EAI_AGAIN", "ETIMEOUT", "ETIMEDOUT", "ESERVFAIL"]);
+
+function waitForRetry(signal, delay) {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delay);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+}
+
 export class ProxyError extends Error {
   constructor(status, message) {
     super(message);
@@ -26,12 +43,21 @@ export function validateTarget(value) {
 export async function resolvePublicTarget(url, signal, resolve = lookup) {
   const host = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (isIP(host)) return [{ address: host, family: isIP(host) }];
-  const records = await new Promise((fulfill, reject) => {
-    signal.throwIfAborted();
-    const abort = () => reject(signal.reason);
-    signal.addEventListener("abort", abort, { once: true });
-    resolve(host, { all: true, verbatim: true }).then(fulfill, reject).finally(() => signal.removeEventListener("abort", abort));
-  });
+  let records;
+  for (let attempt = 0;; attempt++) {
+    try {
+      records = await new Promise((fulfill, reject) => {
+        signal.throwIfAborted();
+        const abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        resolve(host, { all: true, verbatim: true }).then(fulfill, reject).finally(() => signal.removeEventListener("abort", abort));
+      });
+      break;
+    } catch (error) {
+      if (attempt === 2 || !retryableDnsErrors.has(error.code)) throw error;
+      await waitForRetry(signal, 25 * (attempt + 1));
+    }
+  }
   if (!records.length || records.some(({ address }) => !isPublicAddress(address))) {
     throw new ProxyError(403, "The destination resolves to a private or reserved address.");
   }

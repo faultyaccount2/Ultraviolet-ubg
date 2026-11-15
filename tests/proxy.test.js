@@ -73,6 +73,32 @@ test("mixed DNS answers are rejected and the socket lookup stays pinned", async 
     assert.equal(error, null); assert.equal(address, "8.8.8.8"); assert.equal(family, 4);
   });
 
+  test("transient DNS errors retry within a bound while permanent and exhausted errors surface", async () => {
+    const url = validateTarget("https://example.com/");
+    let attempts = 0;
+    const records = await resolvePublicTarget(url, AbortSignal.timeout(1000), async () => {
+      attempts++;
+      if (attempts < 3) throw Object.assign(new Error("DNS resolver busy"), { code: "EBUSY" });
+      return [{ address: "8.8.8.8", family: 4 }];
+    });
+    assert.equal(attempts, 3);
+    assert.equal(records[0].address, "8.8.8.8");
+
+    attempts = 0;
+    await assert.rejects(resolvePublicTarget(url, AbortSignal.timeout(1000), async () => {
+      attempts++;
+      throw Object.assign(new Error("DNS name not found"), { code: "ENOTFOUND" });
+    }), { code: "ENOTFOUND" });
+    assert.equal(attempts, 1);
+
+    attempts = 0;
+    await assert.rejects(resolvePublicTarget(url, AbortSignal.timeout(1000), async () => {
+      attempts++;
+      throw Object.assign(new Error("DNS resolver busy"), { code: "EBUSY" });
+    }), { code: "EBUSY" });
+    assert.equal(attempts, 3);
+  });
+
   test("transport accepts large upstream headers and streams files larger than 4 MB", async (t) => {
     const bytes = Buffer.alloc(6 * 1024 * 1024, 65);
     const server = createServer((_req, res) => {
