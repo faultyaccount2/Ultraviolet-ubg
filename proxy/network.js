@@ -9,6 +9,7 @@ export { isPublicAddress } from "../shared/address.js";
 
 export const MAX_REWRITE_BYTES = 64 * 1024 * 1024;
 const retryableDnsErrors = new Set(["EBUSY", "EAI_AGAIN", "ETIMEOUT", "ETIMEDOUT", "ESERVFAIL"]);
+const retryableTransportErrors = new Set(["ECONNRESET", "ECONNREFUSED", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT"]);
 
 function waitForRetry(signal, delay) {
   return new Promise((resolve, reject) => {
@@ -74,16 +75,28 @@ export function pinnedLookup(records) {
 export function requestResource(url, { records, method, body, headers, signal }) {
   return new Promise((resolve, reject) => {
     const transport = url.protocol === "https:" ? https : http;
-    // The socket uses only the validated addresses; TLS still verifies the URL hostname.
-    const request = transport.request(url, {
-      method, headers, signal, agent: false, lookup: pinnedLookup(records),
-      maxHeaderSize: 64 * 1024,
-    }, (response) => {
-      resolve({ status: response.statusCode, headers: response.headers, stream: response });
-    });
-    request.on("error", reject);
-    if (body?.length) request.write(body);
-    request.end();
+    let attempts = 0;
+    const send = () => {
+      if (signal.aborted) { reject(signal.reason); return; }
+      // The socket uses only the validated addresses; TLS still verifies the URL hostname.
+      const request = transport.request(url, {
+        method, headers, signal, agent: false, lookup: pinnedLookup(records),
+        maxHeaderSize: 64 * 1024,
+      }, (response) => {
+        resolve({ status: response.statusCode, headers: response.headers, stream: response });
+      });
+      request.on("error", (error) => {
+        if (attempts === 0 && ["GET", "HEAD"].includes(method) && retryableTransportErrors.has(error.code)) {
+          attempts++;
+          waitForRetry(signal, 25).then(send, reject);
+          return;
+        }
+        reject(error);
+      });
+      if (body?.length) request.write(body);
+      request.end();
+    };
+    send();
   });
 }
 

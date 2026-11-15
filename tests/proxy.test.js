@@ -99,6 +99,31 @@ test("mixed DNS answers are rejected and the socket lookup stays pinned", async 
     assert.equal(attempts, 3);
   });
 
+  test("transient GET transport errors retry once, but POST requests are never replayed", async (t) => {
+    let getRequests = 0;
+    let postRequests = 0;
+    const server = createServer((req, res) => {
+      if (req.url === "/get" && ++getRequests === 1) { req.socket.destroy(); return; }
+      if (req.url === "/post") { postRequests++; req.socket.destroy(); return; }
+      res.end("ok");
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+    const url = new URL(`http://fixture.example:${server.address().port}/get`);
+    const options = { records: [{ address: "127.0.0.1", family: 4 }], headers: {}, signal: AbortSignal.timeout(3000) };
+    const response = await requestResource(url, { ...options, method: "GET" });
+    assert.equal(response.status, 200);
+    assert.equal(getRequests, 2);
+    const chunks = [];
+    for await (const chunk of response.stream) chunks.push(chunk);
+    assert.equal(Buffer.concat(chunks).toString(), "ok");
+    await assert.rejects(requestResource(new URL(url.origin + "/post"), {
+      ...options, method: "POST", body: Buffer.from("one-time"),
+    }));
+    assert.equal(postRequests, 1);
+  });
+
   test("transport accepts large upstream headers and streams files larger than 4 MB", async (t) => {
     const bytes = Buffer.alloc(6 * 1024 * 1024, 65);
     const server = createServer((_req, res) => {
