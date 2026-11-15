@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: bromine-wisp
+    runtime: node
+    rootDir: wisp
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: WISP_ALLOWED_ORIGINS
+        sync: false
