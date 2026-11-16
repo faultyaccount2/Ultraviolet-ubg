@@ -412,7 +412,7 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       const ttl = Math.min(900, maxAge - age);
       const sensitiveQuery = [...url.searchParams.keys()].some((key) => /auth|password|passwd|token|key|secret|session|signature|^code$/i.test(key));
       const cacheable = req.method === "GET" && !req.headers.range && query.get("cache") !== "0" && cacheableTypes.has(type) && response.status === 200 &&
-          !credentialedRequest && !siteAuthorization && !response.headers["set-cookie"] && !sensitiveQuery &&
+          !credentialedRequest && !siteAuthorization && !sensitiveQuery &&
           ttl > 0 && !/private|no-store|no-cache/i.test(cacheControl) &&
           !/(?:^|,)\s*(?:\*|cookie|authorization)\s*(?:,|$)/i.test(response.headers.vary || "");
       const cacheHeaders = () => {

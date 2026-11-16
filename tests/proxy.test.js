@@ -504,6 +504,7 @@ test("redirects strip site authorization across origins and preserve mutation se
 });
 
 test("public asset cache eligibility respects origin freshness, sensitive queries and private responses", async () => {
+  let droppedAssetCookie;
   for (const [target, type, cacheControl, extra, ttl] of [
     ["https://fixture.example/assets/image.svg?v=2", "image", "public, max-age=60", { age: "55" }, "5"],
     ["https://fixture.example/assets/image.svg", "image", "max-age=86400", {}, "900"],
@@ -512,7 +513,7 @@ test("public asset cache eligibility respects origin freshness, sensitive querie
     ["https://fixture.example/assets/image.svg", "image", "no-cache, max-age=60", {}, undefined],
     ["https://fixture.example/assets/image.svg", "image", "max-age=60", { age: "61" }, undefined],
     ["https://fixture.example/assets/image.svg", "image", "max-age=60", { vary: "Cookie" }, undefined],
-    ["https://fixture.example/assets/image.svg", "image", "max-age=60", { "set-cookie": "private=value" }, undefined],
+    ["https://fixture.example/assets/image.svg", "image", "max-age=60", { "set-cookie": "tracking=ignored; Path=/" }, "60"],
     ["https://fixture.example/assets/image.svg?token=private", "image", "max-age=60", {}, undefined],
     ["https://fixture.example/assets/image.svg", "xmlhttprequest", "max-age=60", {}, undefined],
     ["https://fixture.example/", "document", "max-age=60", {}, undefined],
@@ -522,11 +523,13 @@ test("public asset cache eligibility respects origin freshness, sensitive querie
       response.headers = { ...response.headers, "cache-control": cacheControl, ...extra };
       return response;
     } });
+    if (extra["set-cookie"]) droppedAssetCookie = result.headers["set-cookie"];
     assert.equal(result.headers["x-bromine-cache-ttl"], ttl);
     assert.equal(result.headers["x-bromine-cacheable"], ttl ? "1" : undefined);
     assert.equal(result.headers["cache-control"], ttl ? `private, max-age=${ttl}` : "no-store");
     assert.equal(result.headers["vercel-cdn-cache-control"], ttl ? `public, s-maxage=${ttl}` : "no-store");
   }
+  assert.equal(droppedAssetCookie, undefined, "static asset cookies are discarded even when the public body is cached");
 });
 
 test("cache versions stay inside proxy metadata and invalid script responses cannot enter the edge cache", async () => {

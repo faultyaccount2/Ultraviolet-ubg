@@ -307,9 +307,11 @@ another upstream download, including versioned asset URLs. Old disabled settings
 no longer disable caching. It is LRU-bounded by the selected size and 200 entries.
 Freshness honors upstream max-age/Age with a 15-minute cap. Pages, API responses,
 authenticated/private responses, sensitive query strings, and downloads are
-excluded. Individual resources over 4 MB are
-streamed normally but not duplicated into this cache. Clear all/categories
-or the current site's cache without clearing unrelated authenticated storage.
+excluded. Set-Cookie headers on static assets are ignored and do not by
+themselves prevent caching a fresh public response. Individual resources over
+4 MB are streamed normally but not duplicated into this cache. Clear
+all/categories or the current site's cache without clearing unrelated
+authenticated storage.
 Opaque proxy frames cannot rely on an app service worker controlling their
 subresources. Eligible public assets also use Vercel's edge cache with the same
 freshness cap and credential exclusions. Pages, API calls and downloads remain
