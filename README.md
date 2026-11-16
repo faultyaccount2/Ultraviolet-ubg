@@ -81,7 +81,7 @@ There are three separate deployment roles:
 Deploy `scramjet-host/` as a second Vercel project from this repository:
 
 - Import `faultyaccount2/Ultraviolet-ubg` again, using branch `main`.
-- Project name: `bromine-scramjet`; Framework Preset: **Other**.
+- Project name: `scramjet-ubg`; Framework Preset: **Other**.
 - Root Directory: `scramjet-host`.
 - Enable **Include source files outside of the Root Directory**. Its build
   reuses this repository's shared URL validation, filter lists, favicon and
@@ -108,12 +108,12 @@ and Output Directory `public`. Set these **public** build variables for
 Production and redeploy:
 
 ```text
-BROMINE_SCRAMJET_ORIGIN=https://bromine-scramjet.vercel.app
+BROMINE_SCRAMJET_ORIGIN=https://scramjet-ubg.vercel.app
 BROMINE_WISP_URL=wss://bromine-wisp.iknowikea.workers.dev/wisp/
 ```
 
 Use the actual production domain Vercel assigns to the new Scramjet project
-if it differs from `bromine-scramjet.vercel.app`. If Bromine uses another domain,
+if it differs from `scramjet-ubg.vercel.app`. If Bromine uses another domain,
 put that exact origin in `BROMINE_APP_ORIGINS` and redeploy Scramjet too.
 The Scramjet project does not need `BROMINE_WISP_URL`: Bromine sends it over
 the validated app connection. The Worker origin allowlist, if configured,
@@ -145,6 +145,9 @@ Cloudflare Workers cannot open TCP connections to Cloudflare IP ranges, so
 sites behind Cloudflare will not load through this Worker. Use a non-Cloudflare
 destination such as `http://neverssl.com/` for a live smoke test; occasional
 timeouts or upstream refusals still need to be reported, not treated as success.
+NeverSSL intentionally redirects its homepage to a random `neverssl.com`
+subdomain. `http://neverssl.com/online/` serves its content without that
+JavaScript redirect; `http://info.cern.ch/` is another non-Cloudflare test site.
 
 The pinned Scramjet core/controller pair is intentional: controller `0.0.14`
 requires core `2.0.67-alpha.2`. Do not replace it with npm's unrelated `latest`
