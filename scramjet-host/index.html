@@ -9,14 +9,31 @@
     <style>
       :root { color-scheme: dark; font: 14px system-ui, sans-serif; background: #11111b; color: #cdd6f4; }
       html, body { height: 100%; margin: 0; }
-      #status { padding: 1rem; overflow-wrap: anywhere; }
-      iframe { display: block; width: 100%; height: 100%; border: 0; background: white; }
+      body { display: flex; flex-direction: column; }
+      header { padding: .8rem 1rem; background: #181825; border-bottom: 1px solid #45475a; }
+      form { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+      input { flex: 1; min-width: 10rem; }
+      input, button { padding: .65rem; border: 1px solid #585b70; border-radius: .5rem; font: inherit; background: #313244; color: inherit; }
+      button { cursor: pointer; }
+      a { color: #b4befe; }
+      header p { margin: .6rem 0 0; font-size: .85rem; }
+      #status { margin: 0; padding: .7rem 1rem; overflow-wrap: anywhere; }
+      iframe { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: white; }
       [hidden] { display: none !important; }
     </style>
     <script src="/config.js"></script>
     <script type="module" src="/host.js"></script>
   </head>
   <body>
+    <header id="standalone" hidden>
+      <form id="navigation">
+        <strong>Scramjet</strong>
+        <input id="address" aria-label="Website URL" placeholder="http://info.cern.ch/" spellcheck="false" autocomplete="off" required>
+        <button type="submit">Go</button>
+        <button id="reload" type="button">Reload</button>
+      </form>
+      <p>Websites load through Wisp. This Cloudflare Worker cannot reach sites hosted on Cloudflare. <a href="https://ultraviolet-ubg.vercel.app/" target="_blank" rel="noopener noreferrer">Open Bromine</a></p>
+    </header>
     <p id="status" role="status">This isolated Scramjet frontend is opened by Bromine. Configure its allowed app origins before use. <a href="https://github.com/faultyaccount2/Ultraviolet-ubg" rel="noopener noreferrer" target="_blank">Source code</a> &middot; <a href="/LICENSE.txt">AGPL-3.0</a></p>
     <iframe id="site" title="Scramjet website" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads" referrerpolicy="no-referrer" hidden></iframe>
   </body>

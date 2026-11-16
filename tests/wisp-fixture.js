@@ -102,6 +102,8 @@ export function startWispFixture(port = 4175) {
       let cacheControl = "no-store";
       let status = "200 OK";
       if (url.pathname === "/") body = page;
+      else if (url.pathname === "/script-redirect") body = '<title>Redirecting fixture</title><script>location.replace("http://other.example/http-redirect");</script>';
+      else if (url.pathname === "/http-redirect") { body = ""; status = "302 Found"; extra = "Location: /\r\n"; }
       else if (url.pathname === "/not-found") { body = page; status = "404 Not Found"; }
       else if (url.pathname === "/challenge") { body = page; extra = "cf-mitigated: challenge\r\n"; }
       else if (url.pathname === "/next") body = "<title>Next Scramjet fixture</title><h1>Next Scramjet fixture</h1><a href='/'>Previous fixture</a>";

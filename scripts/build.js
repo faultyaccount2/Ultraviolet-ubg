@@ -23,7 +23,8 @@ await build({
   logLevel: "info",
   define: { "globalThis.BROMINE_WORKER_SOURCE": JSON.stringify(worker.outputFiles[0].text) },
 });
-const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const commit = process.env.BROMINE_BUILD_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA ||
+  execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 await writeFile("public/version.json", JSON.stringify({ commit }));
 const supabaseUrl = process.env.BROMINE_SUPABASE_URL || "";
 const supabasePublishableKey = process.env.BROMINE_SUPABASE_PUBLISHABLE_KEY || "";

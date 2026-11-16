@@ -96,10 +96,11 @@ Deploy `scramjet-host/` as a second Vercel project from this repository:
   Add explicit preview origins when needed and rebuild the isolated frontend.
   An empty list deliberately accepts no app connections.
 
-For the Scramjet project, set this **public** build variable for Production:
+For the Scramjet project, set these **public** build variables for Production:
 
 ```text
 BROMINE_APP_ORIGINS=https://ultraviolet-ubg.vercel.app
+BROMINE_WISP_URL=wss://bromine-wisp.iknowikea.workers.dev/wisp/
 ```
 
 Deploy it first. On the existing Bromine UI project, keep Root Directory at
@@ -115,8 +116,11 @@ BROMINE_WISP_URL=wss://bromine-wisp.iknowikea.workers.dev/wisp/
 Use the actual production domain Vercel assigns to the new Scramjet project
 if it differs from `scramjet-ubg.vercel.app`. If Bromine uses another domain,
 put that exact origin in `BROMINE_APP_ORIGINS` and redeploy Scramjet too.
-The Scramjet project does not need `BROMINE_WISP_URL`: Bromine sends it over
-the validated app connection. The Worker origin allowlist, if configured,
+Opening `https://scramjet-ubg.vercel.app` directly shows a standalone proxy
+with an address bar, reload and website downloads, using its own
+`BROMINE_WISP_URL`. When embedded, Bromine still sends its endpoint over the
+validated app connection and the standalone toolbar stays hidden.
+The Worker origin allowlist, if configured,
 must include the **Scramjet frontend origin**, where its WebSocket originates.
 
 These are public endpoint addresses, not credentials: do not put tokens
@@ -433,6 +437,9 @@ closes sockets after 120 seconds and some real-time apps may reconnect or fail.
 ## Vercel deployment
 
 Vercel runs `pnpm run build`, serves `public/`, and deploys `api/proxy.js`.
+Git builds use `VERCEL_GIT_COMMIT_SHA` for the version endpoint. For a CLI
+deployment without a Git checkout on the builder, run
+`npx vercel --prod --build-env BROMINE_BUILD_COMMIT="$(git rev-parse HEAD)"`.
 The function bundle explicitly includes the compiled filters and uBlock
 Origin's public-suffix data, which its runtime loads from disk.
 Dependency assets must be included from pnpm's real package directory, not

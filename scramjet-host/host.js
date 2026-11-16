@@ -1,17 +1,58 @@
 import { validateNavigation } from "../shared/address.js";
 import { validateWispUrl } from "./config.js";
 import { PublicAssetCache } from "./cache.js";
+import { Downloads } from "../frontend/downloads.js";
 
 const status = document.querySelector("#status");
 const site = document.querySelector("#site");
 const allowedOrigins = window.BROMINE_SCRAMJET_CONFIG?.origins || [];
+const standalone = window === window.top;
+const address = document.querySelector("#address");
+const standaloneConfig = {
+  wispUrl: window.BROMINE_SCRAMJET_CONFIG?.wispUrl || "",
+  limitMB: 256, adblock: true, logging: false, concurrent: 2, proxyEngine: "scramjet",
+};
 let port;
 let engine;
 let engineConfig;
 let loadingEngine;
 const downloads = new Map();
-const emit = (message) => port?.postMessage(message);
+function showStatus(message) {
+  status.textContent = message;
+  status.hidden = false;
+}
+const emit = (message) => {
+  port?.postMessage(message);
+  if (!standalone) return;
+  if (message.event === "navigation") address.value = message.url;
+  if (message.event === "appearance") document.title = `${message.title || "Website"} - Scramjet`;
+  if (["progress", "error", "loaded"].includes(message.event) && message.message) showStatus(message.message);
+  if (message.event === "new-tab") {
+    const url = new URL("/", location.origin);
+    url.hash = new URLSearchParams({ url: validateNavigation(message.url).href }).toString();
+    window.open(url.href, "_blank", "noopener,noreferrer");
+  }
+  if (message.event === "download") {
+    try { standaloneDownloads.add(validateNavigation(message.url).href); }
+    catch (error) { showStatus(error.message); }
+  }
+};
 const cache = new PublicAssetCache(caches, () => emit({ event: "error", message: "The Scramjet public asset cache failed. Check browser storage availability." }));
+const standaloneDownloads = standalone ? new Downloads({
+  route: validateNavigation,
+  options: () => standaloneConfig,
+  notify: showStatus,
+  changed() {
+    const item = standaloneDownloads.items[0];
+    if (item?.status === "failed") showStatus(`Download failed: ${item.error}`);
+    else if (item?.status === "saved") showStatus(`Download saved: ${item.name}`);
+  },
+  async fetchResource(url, options) {
+    const runtime = await getEngine(standaloneConfig);
+    const response = await runtime.download(url, [...options.headers], options.signal);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  },
+}) : null;
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -96,6 +137,29 @@ async function command(data) {
   throw new Error("Unsupported Scramjet command.");
 }
 
+async function navigateStandalone() {
+  try {
+    const value = address.value.trim();
+    const url = validateNavigation(/^[a-z][a-z\d+.-]*:/i.test(value) ? value : `https://${value}`).href;
+    address.value = url;
+    await command({ action: "navigate", url, config: standaloneConfig });
+  } catch (error) {
+    showStatus(error.message);
+  }
+}
+
+if (standalone) {
+  document.querySelector("#standalone").hidden = false;
+  showStatus("Enter a website address to browse through Scramjet and Wisp.");
+  document.querySelector("#navigation").addEventListener("submit", (event) => {
+    event.preventDefault();
+    navigateStandalone();
+  });
+  document.querySelector("#reload").addEventListener("click", navigateStandalone);
+  const initialUrl = new URLSearchParams(location.hash.slice(1)).get("url");
+  if (initialUrl) { address.value = initialUrl; navigateStandalone(); }
+}
+
 window.addEventListener("message", (event) => {
   if (event.source !== parent || !allowedOrigins.includes(event.origin) || event.data?.type !== "bromine:scramjet-connect" || !event.ports[0]) return;
   port?.close();
@@ -119,6 +183,7 @@ window.addEventListener("message", (event) => {
 });
 
 window.addEventListener("pagehide", () => {
+  for (const item of [...standaloneDownloads?.items || []]) standaloneDownloads.action(item, "remove");
   for (const download of downloads.values()) download.abort();
   downloads.clear();
   engine?.close();

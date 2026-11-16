@@ -161,3 +161,41 @@ test("Scramjet preserves POST form bodies and routes website download links thro
   await page.locator("#menu").getByRole("button", { name: "Downloads", exact: true }).click();
   await expect(page.locator("#download-list")).toContainText("scramjet");
 });
+
+test("the standalone Scramjet proxy browses, reloads and downloads without Bromine", async ({ page }) => {
+  test.skip(production, "Uses the loopback Scramjet host and Wisp fixture.");
+  await page.goto("http://127.0.0.1:4174/");
+  await page.getByRole("textbox", { name: "Website URL", exact: true }).fill(target);
+  await page.getByRole("button", { name: "Go", exact: true }).click();
+  const frame = page.frameLocator("#site");
+  await expect(frame.locator("#script")).toHaveText("Script executed");
+  await expect(frame.locator("#module")).toHaveText("Module executed");
+  await expect(frame.locator("#api")).toContainText("API loaded");
+  await expect(page).toHaveTitle("Scramjet fixture - Scramjet");
+  await page.getByRole("button", { name: "Reload", exact: true }).click();
+  await expect(frame.locator("#api")).toContainText("API loaded");
+  const downloadPromise = page.waitForEvent("download");
+  await frame.getByRole("link", { name: "Download fixture file", exact: true }).click();
+  const download = await downloadPromise;
+  expect(await readFile(await download.path(), "utf8")).toBe("Scramjet download through Wisp\n");
+  await frame.getByRole("link", { name: "Next fixture", exact: true }).click();
+  await expect(frame.getByRole("heading", { name: "Next Scramjet fixture", exact: true })).toBeVisible();
+  await expect(page.locator("#address")).toHaveValue(`${target}next`);
+  expect(new URL(page.url()).origin).toBe("http://127.0.0.1:4174");
+});
+
+test("cross-host script and HTTP redirects stay inside embedded and standalone Scramjet", async ({ page }) => {
+  test.skip(production, "Uses deterministic non-Cloudflare redirect fixtures.");
+  await openScramjet(page);
+  await page.locator("#address").fill(`${target}script-redirect`);
+  await page.locator("#address").press("Enter");
+  let frame = page.frameLocator(".tab-page:not([hidden]) > iframe").frameLocator("#site");
+  await expect(frame.locator("#api")).toContainText("API loaded");
+  await expect(page.locator("#address")).toHaveValue("http://other.example/");
+  expect(new URL(page.url()).origin).toBe("http://127.0.0.1:4173");
+  await page.goto(`http://127.0.0.1:4174/#url=${encodeURIComponent(`${target}script-redirect`)}`);
+  frame = page.frameLocator("#site");
+  await expect(frame.locator("#api")).toContainText("API loaded");
+  await expect(page.locator("#address")).toHaveValue("http://other.example/");
+  expect(new URL(page.url()).origin).toBe("http://127.0.0.1:4174");
+});
