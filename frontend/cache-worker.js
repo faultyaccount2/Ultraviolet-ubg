@@ -23,9 +23,12 @@ async function records() {
   const rows = [];
   for (const name of (await caches.keys()).filter((name) => name.startsWith(prefix))) {
     const cache = await caches.open(name);
-    for (const request of await cache.keys()) {
-      const response = await cache.match(request);
-      rows.push({ name, request, size: Number(response.headers.get("X-Bromine-Size") || 0), used: Number(response.headers.get("X-Bromine-Used") || 0) });
+    const requests = await cache.keys();
+    for (let offset = 0; offset < requests.length; offset += 16) {
+      rows.push(...await Promise.all(requests.slice(offset, offset + 16).map(async (request) => {
+        const response = await cache.match(request);
+        return { name, request, size: Number(response.headers.get("X-Bromine-Size") || 0), used: Number(response.headers.get("X-Bromine-Used") || 0) };
+      })));
     }
   }
   return rows;

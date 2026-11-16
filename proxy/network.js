@@ -10,6 +10,15 @@ export { isPublicAddress } from "../shared/address.js";
 export const MAX_REWRITE_BYTES = 64 * 1024 * 1024;
 const retryableDnsErrors = new Set(["EBUSY", "EAI_AGAIN", "ETIMEOUT", "ETIMEDOUT", "ESERVFAIL"]);
 const retryableTransportErrors = new Set(["ECONNRESET", "ECONNREFUSED", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT"]);
+const poolOptions = { keepAlive: true, maxSockets: 32, maxTotalSockets: 128, maxFreeSockets: 4, timeout: 5000 };
+const agents = { "http:": new http.Agent(poolOptions), "https:": new https.Agent(poolOptions) };
+for (const agent of Object.values(agents)) {
+  const getName = agent.getName;
+  agent.getName = function (options) {
+    // A changed DNS answer must never reuse a socket pinned to an older answer.
+    return `${getName.call(this, options)}:${options.bromineAddressKey}`;
+  };
+}
 
 function waitForRetry(signal, delay) {
   return new Promise((resolve, reject) => {
@@ -73,6 +82,9 @@ export function pinnedLookup(records) {
 }
 
 export function requestResource(url, { records, method, body, headers, signal }) {
+  const reusable = ["GET", "HEAD"].includes(method) &&
+    !Object.keys(headers).some((name) => /^(?:authorization|cookie)$/i.test(name));
+  const bromineAddressKey = records.map(({ address, family }) => `${family}:${address}`).sort().join(",");
   return new Promise((resolve, reject) => {
     const transport = url.protocol === "https:" ? https : http;
     let attempts = 0;
@@ -80,7 +92,8 @@ export function requestResource(url, { records, method, body, headers, signal })
       if (signal.aborted) { reject(signal.reason); return; }
       // The socket uses only the validated addresses; TLS still verifies the URL hostname.
       const request = transport.request(url, {
-        method, headers, signal, agent: false, lookup: pinnedLookup(records),
+        method, headers, signal, agent: reusable ? agents[url.protocol] : false,
+        bromineAddressKey, lookup: pinnedLookup(records), timeout: 0,
         maxHeaderSize: 64 * 1024,
       }, (response) => {
         resolve({ status: response.statusCode, headers: response.headers, stream: response });

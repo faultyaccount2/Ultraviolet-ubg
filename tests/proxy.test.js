@@ -2,6 +2,7 @@ import { test } from "node:test";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { runInNewContext } from "node:vm";
+import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { parse } from "parse5";
 import { createProxyHandler } from "../proxy/service.js";
@@ -60,6 +61,30 @@ test("document caches enforce byte and entry quotas and release deleted entries"
   await entries.put("https://fixture.example/extra", new Response(null));
 });
 
+test("public cache metadata scans overlap storage reads without unbounded concurrency", async () => {
+  const requests = Array.from({ length: 40 }, (_, index) => ({ url: `https://proxy.example/asset-${index}` }));
+  let active = 0;
+  let peak = 0;
+  const cache = {
+    keys: async () => requests,
+    async match() {
+      peak = Math.max(peak, ++active);
+      await new Promise((resolve) => setImmediate(resolve));
+      active--;
+      return { headers: new Headers({ "X-Bromine-Size": "1024", "X-Bromine-Used": "42" }) };
+    },
+  };
+  const source = await readFile(new URL("../frontend/cache-worker.js", import.meta.url), "utf8");
+  const rows = await runInNewContext(source + "\nrecords();", {
+    self: { location: { origin: "https://proxy.example" }, addEventListener() {} }, URL,
+    caches: { keys: async () => ["bromine-cache-image-v1"], open: async () => cache },
+  });
+  assert.equal(rows.length, requests.length);
+  assert.equal(rows.reduce((size, row) => size + row.size, 0), 40 * 1024);
+  assert.ok(peak > 1, "cache reads should overlap instead of waiting one by one");
+  assert.ok(peak <= 16, "cache reads must stay bounded");
+});
+
 function elements(source) {
   const all = [];
   function walk(node) { if (node.tagName) all.push(node); node.childNodes?.forEach(walk); }
@@ -85,6 +110,44 @@ test("mixed DNS answers are rejected and the socket lookup stays pinned", async 
   const records = await resolvePublicTarget(url, signal, async () => [{ address: "8.8.8.8", family: 4 }]);
   pinnedLookup(records)("changed-dns.example", {}, (error, address, family) => {
     assert.equal(error, null); assert.equal(address, "8.8.8.8"); assert.equal(family, 4);
+  });
+
+  test("public GETs reuse connections only for the same host and validated DNS set", async (t) => {
+    let connections = 0;
+    const server = createServer((_req, res) => res.end("ok"));
+    server.on("connection", () => { connections++; });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    t.after(() => new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+      server.closeAllConnections();
+    }));
+    const url = new URL(`http://fixture.example:${server.address().port}/`);
+    const first = { address: "127.0.0.1", family: 4 };
+    const second = { address: "127.0.0.2", family: 4 };
+    const request = async ({ records = [first], target = url, headers = {}, method = "GET" } = {}) => {
+      const response = await requestResource(target, {
+        records, method, headers, signal: AbortSignal.timeout(3000),
+      });
+      for await (const chunk of response.stream) assert.equal(chunk.toString(), "ok");
+    };
+    await request();
+    await request();
+    assert.equal(connections, 1, "public requests should share their existing connection");
+    await request({ records: [first, second] });
+    assert.equal(connections, 2, "changed validated addresses must use another pool");
+    await request({ records: [second, first] });
+    assert.equal(connections, 2, "record order alone must not trigger another handshake");
+    await assert.rejects(request({ records: [second] }), { code: "ECONNREFUSED" });
+    assert.equal(connections, 2, "an old reachable socket cannot bypass the newly pinned destination");
+    await request({ target: new URL(`http://other.example:${server.address().port}/`) });
+    assert.equal(connections, 3, "different hostnames cannot share an upstream connection");
+    await request({ headers: { Cookie: "session=synthetic" } });
+    await request({ headers: { authorization: "Bearer synthetic" } });
+    await request({ method: "POST" });
+    assert.equal(connections, 6, "credentialed requests and mutations must not use the public pool");
+    await request();
+    assert.equal(connections, 6, "private requests must not evict the public connection");
   });
 
   test("transient DNS errors retry within a bound while permanent and exhausted errors surface", async () => {

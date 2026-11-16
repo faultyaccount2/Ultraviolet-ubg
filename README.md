@@ -282,6 +282,15 @@ site works. Cookie support does not solve CAPTCHA or Cloudflare challenges.
 
 ## Cache, privacy and presentation
 
+Classic reuses bounded upstream HTTP/TLS connections for public GET/HEAD
+requests, avoiding repeated connection setup for same-host assets. DNS is still
+validated on every request and redirect; a different validated address set uses
+a separate connection pool. Cookie/Authorization requests and mutations do not
+use the public pool. Idle connections expire after at most five seconds
+(or sooner when requested by the upstream server); active streams retain the
+existing execution deadline. Browser cache metadata is read in bounded parallel
+batches rather than one resource at a time.
+
 Each engine has an always-enabled, browser-local public asset cache with its own
 selected size limit and maximum of 200 entries. Scramjet caches original assets
 before rewriting, keyed by top-level site, URL, destination, cache version and
