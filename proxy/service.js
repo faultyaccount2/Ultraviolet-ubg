@@ -440,9 +440,12 @@ export function createProxyHandler({ resolve, send = requestResource, blocked = 
       response.body = await collectBody(response);
       let output = await decodeBody(response);
       if (req.method !== "HEAD" && response.status !== 206 && /^(?:text\/html|application\/xhtml\+xml)(?:;|$)/i.test(contentType)) {
-        output = Buffer.from(rewriteHtml(textBody(output, contentType), url.href + new URL(raw).hash, requested, adblock, {
+        const html = textBody(output, contentType);
+        const cloudflareChallenge = /cloudflare/i.test(response.headers.server || "") &&
+          /(?:cf_chl_opt|cdn-cgi\/challenge-platform|__cf_chl_tk)/i.test(html);
+        output = Buffer.from(rewriteHtml(html, url.href + new URL(raw).hash, requested, adblock, {
           logging: query.get("logging") === "1", cache: query.get("cache") !== "0", cacheVersion,
-          responseStatus: response.status, verification: response.headers["cf-mitigated"] === "challenge",
+          responseStatus: response.status, verification: response.headers["cf-mitigated"] === "challenge" || cloudflareChallenge,
           cookieState: isDocumentNavigation && url.hostname === originHost ?
             cookieStateHeader(siteCookies.filter((cookie) => !cookie.httpOnly && cookieMatches(cookie, url.href, originHost))) : "",
         }));

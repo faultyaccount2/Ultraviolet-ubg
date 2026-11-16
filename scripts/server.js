@@ -2,10 +2,10 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 
-const root = resolve("public");
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".json": "application/json", ".png": "image/png" };
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".json": "application/json", ".png": "image/png", ".wasm": "application/wasm" };
 
-export function startServer(proxy, port = 3000) {
+export function startServer(proxy, port = 3000, directory = "public") {
+  const root = resolve(directory);
   const server = createServer(async (req, res) => {
     try {
       const pathname = new URL(req.url, "http://localhost").pathname;

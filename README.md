@@ -1,9 +1,8 @@
 # Bromine
 
-A working, Farmers-inspired browser UI deployed as a static frontend and a
-Vercel Node HTTP(S) function. The old rendered snapshot, obfuscated contact
-page, incomplete SvelteKit assets and Scramjet/Wisp runtime are no longer
-deployed.
+A Farmers-inspired browser UI with **Scramjet as its main proxy engine**,
+a separately deployed isolated Scramjet frontend, and a configurable Wisp
+backend. The older Vercel Node HTTP(S) proxy remains a manual alternative.
 
 ## Run and test
 
@@ -17,13 +16,17 @@ pnpm run dev
 ```
 
 The development server binds to `127.0.0.1:3000`. Browser tests run desktop and
-mobile Chromium against a separate loopback server with deterministic upstream
-fixtures. Those fixtures are **not** available in production.
+mobile Chromium against deterministic Classic upstream fixtures and the real
+Scramjet/libcurl runtime connected to a loopback-only Wisp protocol fixture.
+The isolated test frontend uses port 4174; the fixture Wisp endpoint uses 4175.
+These fixtures are **not** production servers and must not be deployed.
 
 The UI provides independent draggable/pinnable tabs, duplicate/reopen/session
 controls, navigation stacks, reload/stop/home, search, bookmarks with
 import/export, history filtering/clearing, downloads, a request inspector,
 glass appearance settings and fullscreen. Web pages stay inside the app.
+Open tabs restore on startup by default. Disable **Restore tabs on startup** to
+remove the saved tab session and opt out.
 DuckDuckGo is the default search engine; Google is also available in Settings.
 Mocha, Charcoal, Ocean, Forest, Rose, High Contrast, Light and System themes
 include coordinated palettes. Selecting a theme applies its accent; custom
@@ -34,29 +37,129 @@ Settings also provides saved color pickers and #RRGGBB inputs for the background
 surfaces, hover, accent, text, page frame, toolbar, tab bar, status bar and borders.
 Reset colors restores the selected theme. Frame color does not recolor upstream
 website content.
-Proxy is the default; optional DIRECT mode is an iframe, not a native tab.
+Scramjet is the default proxy engine; optional DIRECT mode is an iframe, not a native tab.
 Direct embedding can be refused by the destination. Cross-origin failures
 cannot be reliably classified, so no insecure timer-based fallback is used.
 Use Site Routing to select Proxy explicitly.
-For manual verification, open **Site Routing → Use DIRECT for manual
-verification**. This saves a DIRECT override for the entire hostname; it does
-not return to Proxy automatically. The browser retains native site sessions
-where its cookie/storage policies permit. Bromine cannot copy those sessions
-into Proxy, and its proxy cache controls do not clear native site cookies.
-Proxy keeps a browser-local cookie jar separately; cookies are not shared
-between DIRECT and Proxy.
+For manual verification, use **Open directly** in quick actions or Site Routing.
+It opens an ordinary first-party browser tab without changing the saved route.
+Bromine cannot copy that native session into either proxy engine, and its
+proxy cache controls do not clear native site cookies. Each engine has separate
+website cookies and storage.
 CAPTCHA and Cloudflare checks can still refuse iframe embedding or require
 top-level access. DIRECT respects the destination's `X-Frame-Options` and CSP
 `frame-ancestors`; the app cannot override those headers on a native site.
 Neither challenge loading nor a fixture test proves successful
 live verification. No remote browser or automatic challenge solver is provided.
+Use **Open directly** in the quick actions (or Site Routing) to visit the
+current address as an ordinary first-party page. This is a separate native
+browser session, not a way to transfer login cookies or solved challenges into
+Proxy. It can help with YouTube/Google sign-in or manual CAPTCHA verification,
+but does not guarantee that the provider will accept the session.
+If the provider still rejects or repeatedly challenges that direct visit, only
+the site's support can resolve the provider-side restriction.
 Searches use the selected engine without silently substituting another provider.
 Search providers may require human verification or refuse proxied traffic.
 Shortcuts use Alt+T/W/L/R and Alt+Left/Right to avoid taking over browser
 Ctrl/Cmd shortcuts. Icons and favicons are local SVGs; typography deliberately
 uses system fonts instead of the missing, obfuscated Switzer font.
 
-## HTTP(S) compatibility boundary
+## Scramjet and Wisp setup
+
+There are three separate deployment roles:
+
+1. **Bromine UI:** this repository's root Vercel project.
+2. **Scramjet frontend:** the static `scramjet-host/` workspace, deployed on
+   a different HTTPS origin. It contains Scramjet, libcurl, its service worker,
+   network filtering, and a browser-local public asset cache. It is not a Wisp
+   server. Separate subdomains of your own domain are preferable when available,
+   because browser third-party storage restrictions can affect unrelated sites.
+3. **Wisp:** the separately deployed Cloudflare Worker in `wisp/`, currently
+   available at `wss://bromine-wisp.iknowikea.workers.dev/wisp/`.
+   The Node alternative in `wisp/node/` can run on a TCP-capable host.
+
+Deploy `scramjet-host/` as a second Vercel project from this repository:
+
+- Import `faultyaccount2/Ultraviolet-ubg` again, using branch `main`.
+- Project name: `bromine-scramjet`; Framework Preset: **Other**.
+- Root Directory: `scramjet-host`.
+- Enable **Include source files outside of the Root Directory**. Its build
+  reuses this repository's shared URL validation, filter lists, favicon and
+  license. Do not copy only that folder into an unrelated empty repository.
+- Install Command: `pnpm install --frozen-lockfile`;
+  Build Command: `pnpm run build`; Output Directory: `public`.
+- Make the deployment publicly accessible: disable Vercel Authentication
+  for its production deployment, if enabled.
+- Set `BROMINE_APP_ORIGINS` to the exact Bromine origin, for example
+  `https://ultraviolet-ubg.vercel.app`. Multiple allowed origins are
+  comma-separated; include only origins you control, without trailing slashes.
+  Add explicit preview origins when needed and rebuild the isolated frontend.
+  An empty list deliberately accepts no app connections.
+
+For the Scramjet project, set this **public** build variable for Production:
+
+```text
+BROMINE_APP_ORIGINS=https://ultraviolet-ubg.vercel.app
+```
+
+Deploy it first. On the existing Bromine UI project, keep Root Directory at
+the repository root, Framework Preset **Other**, Build Command `pnpm run build`
+and Output Directory `public`. Set these **public** build variables for
+Production and redeploy:
+
+```text
+BROMINE_SCRAMJET_ORIGIN=https://bromine-scramjet.vercel.app
+BROMINE_WISP_URL=wss://bromine-wisp.iknowikea.workers.dev/wisp/
+```
+
+Use the actual production domain Vercel assigns to the new Scramjet project
+if it differs from `bromine-scramjet.vercel.app`. If Bromine uses another domain,
+put that exact origin in `BROMINE_APP_ORIGINS` and redeploy Scramjet too.
+The Scramjet project does not need `BROMINE_WISP_URL`: Bromine sends it over
+the validated app connection. The Worker origin allowlist, if configured,
+must include the **Scramjet frontend origin**, where its WebSocket originates.
+
+These are public endpoint addresses, not credentials: do not put tokens
+or passwords in them. Settings offers browser-local overrides for both values;
+clear old overrides to use the deployed build values.
+HTTPS/WSS is required, except HTTP/WS loopback URLs for local development.
+The separate Scramjet origin is validated before enabling normal-origin
+iframes. Never host Scramjet's executable website frames on Bromine's UI origin
+or add `allow-same-origin` to Classic's opaque frames.
+
+Scramjet uses Wisp for its website HTTP(S), fetch/XHR, downloads and WebSocket
+traffic; it does not depend on the Classic gateway or Supabase relay. An invalid,
+missing or unreachable connection produces an explicit error, never a silent
+Classic fallback. **Settings → Proxy engine → Classic HTTP proxy** is a manual
+alternative; reload open pages after changing engines or endpoints. Changing
+engines does not migrate website login state.
+
+The Wisp operator must independently restrict allowed app origins, public DNS
+destinations, ports and resource usage. Frontend validation cannot secure a
+publicly reachable backend. Wisp availability, hosting limits, IP reputation,
+site restrictions, third-party storage policies, CAPTCHA, OAuth and DRM can
+still prevent websites from working. Neither engine bypasses verification.
+Browser fixtures do not establish Google, chess.com, YouTube or demongacha
+production compatibility.
+Cloudflare Workers cannot open TCP connections to Cloudflare IP ranges, so
+sites behind Cloudflare will not load through this Worker. Use a non-Cloudflare
+destination such as `http://neverssl.com/` for a live smoke test; occasional
+timeouts or upstream refusals still need to be reported, not treated as success.
+
+The pinned Scramjet core/controller pair is intentional: controller `0.0.14`
+requires core `2.0.67-alpha.2`. Do not replace it with npm's unrelated `latest`
+tag or an incompatible controller. Scramjet and libcurl transport are
+AGPL-3.0-only; the browser filtering adapter uses GPL-3.0-or-later uBlock code.
+The isolated build includes the [AGPL license](./LICENSE). Corresponding source
+and dependency versions are available in this repository and its lockfile:
+[Scramjet](https://github.com/MercuryWorkshop/scramjet),
+[controller](https://github.com/MercuryWorkshop/scramjet-controller),
+[libcurl transport](https://github.com/MercuryWorkshop/libcurl-transport), and
+[uBlock core](https://github.com/gorhill/ubo-core).
+
+## Classic HTTP(S) compatibility boundary
+
+The following describes the manual **Classic HTTP proxy**, not Scramjet.
 
 This is a **web proxy, not a VPN**. Public HTTP/HTTPS destinations on their
 standard ports are accepted. It handles GET, HEAD, POST, PUT, PATCH and DELETE,
@@ -172,7 +275,17 @@ site works. Cookie support does not solve CAPTCHA or Cloudflare challenges.
 
 ## Cache, privacy and presentation
 
-The always-enabled service-worker cache is browser-local, split into proxy HTTP,
+Each engine has an always-enabled, browser-local public asset cache with its own
+selected size limit and maximum of 200 entries. Scramjet caches original assets
+before rewriting, keyed by top-level site, URL, destination, cache version and
+response Vary. Its per-resource limit is 16 MB; larger resources still stream.
+It excludes Cookie/Authorization/Range requests, Set-Cookie/private responses,
+HTML, APIs, sensitive URL queries and downloads. Upstream Age and elapsed body
+read time cannot restart freshness. Cache inspection and selected category/site
+clearing reach both configured engines over the isolated channel. Clearing
+public assets never silently clears login storage.
+
+The Classic service-worker cache is browser-local, split into proxy HTTP,
 image, font and media categories. Fresh public static assets are reused without
 another upstream download, including versioned asset URLs. Old disabled settings
 no longer disable caching. It is LRU-bounded by the selected size and 200 entries.
@@ -222,13 +335,13 @@ to their matching upstream host; they are not persisted by the proxy server.
 User-triggered about:blank wrapping and custom tab title/favicon affect
 presentation only. They do not conceal network traffic, server logs or
 browser activity. Website links open in app tabs, not external windows;
-the explicit about:blank action is the only intentional new native window.
+the explicit about:blank and Open directly actions open native windows.
 Browser-owned policy pages describe unconfigured operator contact details
 honestly and do not claim an established private copyright complaint channel.
 
 ## uBlock Origin network filtering
 
-The backend uses the **official `@gorhill/ubo-core` static network filtering
+Both engines use the **official `@gorhill/ubo-core` static network filtering
 engine**, not a rebranded homemade blocker. EasyList/EasyPrivacy snapshots
 and the supplied custom domain exceptions are compiled at build time.
 Filtering is enabled by default and can be toggled in Settings; reload open
@@ -236,8 +349,8 @@ pages after changing it.
 
 This is **not the full uBlock Origin extension**: cosmetic filtering,
 scriptlets, dynamic filtering and extension APIs are not ported. It applies
-to requests that go through the HTTP proxy, not direct connections made by
-unsupported site code. Your `@@` exceptions take priority under uBO's filter
+to requests routed through the selected engine, not native DIRECT browsing.
+Your `@@` exceptions take priority under uBO's filter
 semantics and deliberately allow many media/social/development services,
 including explicitly exempted advertising/tracking domains.
 
@@ -254,14 +367,14 @@ uBlock Origin core is GPL-3.0-or-later, by Raymond Hill and contributors.
 The proxy backend and filter compilation code use that license; see
 [GPL-3.0](./LICENSES/GPL-3.0.txt). EasyList/EasyPrivacy retain their authors,
 headers and [licensing](https://easylist.to/pages/licence.html); they are used
-under their GPL option. The original Ultraviolet code retains its
-[MIT license](./LICENSE). Its legacy sources are retained for reference and
+under their GPL option. The deployment includes its [AGPL license](./LICENSE). Legacy Ultraviolet sources are retained for reference and
 are not part of the deployed browser; `pnpm run build:uv` is the old library
 build, not the application build.
 
 ## Supabase WebSocket relay setup
 
-The HTTP(S) proxy remains on Vercel. The optional `ws-relay` Edge Function
+This optional setup is for **Classic only**. Scramjet uses Wisp instead.
+The Classic HTTP(S) proxy remains on Vercel. The optional `ws-relay` Edge Function
 provides a separate WSS relay for sites requiring WebSockets. It verifies
 Supabase Auth sessions, checks the browser app's exact origin, restricts
 destinations to `WS_ALLOWED_HOSTS`, rejects non-public DNS answers, allows at
@@ -321,8 +434,9 @@ The function bundle explicitly includes the compiled filters and uBlock
 Origin's public-suffix data, which its runtime loads from disk.
 Dependency assets must be included from pnpm's real package directory, not
 from beneath its `node_modules` symlink, or Vercel rejects the function bundle.
-The optional Supabase relay is a separate deployment. No Wisp server, BareMux,
-Epoxy or VPS is required.
+The isolated Scramjet frontend and Wisp backend are separate deployments,
+as described above. Classic alone needs neither Wisp nor the isolated frontend;
+its optional Supabase relay is another independent deployment.
 Deploy through the connected GitHub integration **only after local tests
 pass**, then verify the actual production URL:
 

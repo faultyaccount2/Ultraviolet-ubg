@@ -697,7 +697,11 @@ test("CSS rewrites quoted URLs, imports, data URLs and external resources", () =
 });
 
 test("document bootstrap reports upstream HTTP failures and verification without caching them", async () => {
-  for (const [path, status, verification] of [["verification-page", 403, "1"], ["unavailable-page", 503, "0"]]) {
+  for (const [path, status, verification] of [
+    ["verification-page", 403, "1"],
+    ["cloudflare-challenge", 403, "1"],
+    ["unavailable-page", 503, "0"],
+  ]) {
     const result = await invoke(`https://fixture.example/${path}`);
     assert.equal(result.statusCode, status);
     assert.match(result.body.toString(), new RegExp(`data-response-status="${status}"`));

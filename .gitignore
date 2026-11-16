@@ -12,3 +12,4 @@ public/runtime-config.js
 playwright-report/
 test-results/
 filters/compiled.json
+scramjet-host/public/

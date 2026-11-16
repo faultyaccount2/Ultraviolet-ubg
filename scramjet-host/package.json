@@ -1,0 +1,19 @@
+{
+  "name": "bromine-scramjet-host",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "@gorhill/ubo-core": "0.1.30",
+    "@mercuryworkshop/libcurl-transport": "2.0.6",
+    "@mercuryworkshop/scramjet": "2.0.67-alpha.2",
+    "@mercuryworkshop/scramjet-controller": "0.0.14"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

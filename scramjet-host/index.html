@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>Bromine Scramjet</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <style>
+      :root { color-scheme: dark; font: 14px system-ui, sans-serif; background: #11111b; color: #cdd6f4; }
+      html, body { height: 100%; margin: 0; }
+      #status { padding: 1rem; overflow-wrap: anywhere; }
+      iframe { display: block; width: 100%; height: 100%; border: 0; background: white; }
+      [hidden] { display: none !important; }
+    </style>
+    <script src="/config.js"></script>
+    <script type="module" src="/host.js"></script>
+  </head>
+  <body>
+    <p id="status" role="status">This isolated Scramjet frontend is opened by Bromine. Configure its allowed app origins before use. <a href="https://github.com/faultyaccount2/Ultraviolet-ubg" rel="noopener noreferrer" target="_blank">Source code</a> &middot; <a href="/LICENSE.txt">AGPL-3.0</a></p>
+    <iframe id="site" title="Scramjet website" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads" referrerpolicy="no-referrer" hidden></iframe>
+  </body>
+</html>

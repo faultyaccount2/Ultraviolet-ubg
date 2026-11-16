@@ -2,18 +2,19 @@ import { proxyUrl } from "../shared/proxy-url.js";
 import { redactUrl } from "../shared/address.js";
 
 export class Downloads {
-  constructor({ route, options, changed, notify }) {
+  constructor({ route, options, changed, notify, fetchResource }) {
     this.route = route;
     this.options = options;
     this.changed = changed;
     this.notify = notify;
+    this.fetchResource = fetchResource;
     this.items = [];
     this.running = 0;
   }
 
-  add(url) {
+  add(url, engine = this.options().proxyEngine) {
     this.route(url);
-    const decision = { mode: "proxy" };
+    const decision = { mode: engine === "scramjet" ? "scramjet" : "proxy" };
     const decoded = decodeURIComponent(new URL(url).pathname.split("/").pop() || "download").replace(/[<>:"/\\|?*]/g, "_");
     const name = [...decoded].map((character) => character.charCodeAt(0) < 32 ? "_" : character).join("");
     if (this.items.length >= 50) throw new Error("Remove a download-history entry before starting more downloads (limit: 50).");
@@ -38,10 +39,12 @@ export class Downloads {
     const begin = performance.now();
     const initialSize = item.size;
     try {
-      const response = await fetch(proxyUrl(item.url, { adblock: this.options().adblock, cache: false, type: "other" }), {
+      const request = {
         signal: item.controller.signal, credentials: "omit",
-        headers: item.size ? { Range: `bytes=${item.size}-` } : {},
-      });
+        headers: new Headers(item.size ? { Range: `bytes=${item.size}-` } : {}),
+      };
+      const response = this.fetchResource && item.route === "scramjet" ? await this.fetchResource(item.url, request) :
+        await fetch(proxyUrl(item.url, { adblock: this.options().adblock, cache: false, type: "other" }), request);
       if (response.headers.get("X-Bromine-Adblock") === "blocked") throw new Error("The download was filtered by uBlock Origin.");
       if (!response.ok) throw new Error(`Proxy download failed (HTTP ${response.status}).`);
       if (item.size && response.status !== 206) {

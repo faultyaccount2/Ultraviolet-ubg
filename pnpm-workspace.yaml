@@ -1,2 +1,7 @@
+packages:
+  - "."
+  - "scramjet-host"
+
 allowBuilds:
   esbuild: true
+  bufferutil: false

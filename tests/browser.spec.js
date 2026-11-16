@@ -5,6 +5,16 @@ const production = Boolean(process.env.TEST_BASE_URL);
 const fixture = "https://fixture.example/";
 const target = production ? "https://example.com/" : fixture;
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    if (window !== window.top) return;
+    const saved = JSON.parse(localStorage.getItem("bromine:settings") || "null");
+    localStorage.setItem("bromine:settings", JSON.stringify({
+      theme: "mocha", engine: "duckduckgo", adblock: true, ...saved, proxyEngine: "classic",
+    }));
+  });
+});
+
 async function setProxyMode(page) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Default routing", { exact: true }).selectOption("proxy");
@@ -116,7 +126,7 @@ test("input errors are explicit and compatibility details are accessible", async
   await expect(page.getByRole("alert")).toContainText("Only HTTP(S)");
   await page.getByRole("button", { name: "See what works." }).click();
   await expect(page.getByRole("dialog")).toContainText("not a VPN");
-  await expect(page.getByRole("dialog")).toContainText("not supported");
+  await expect(page.getByRole("dialog")).toContainText("not provided");
 });
 
 test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST forms work in isolated frames", async ({ page }) => {
@@ -145,7 +155,7 @@ test("resource rewriting, scripts, fetch, relative links, redirects and GET/POST
     context.drawImage(image, 0, 0);
     return context.getImageData(0, 0, 1, 1).data[1];
   })).toBe(128);
-  await expect(page.locator('iframe')).toHaveAttribute("sandbox", "allow-scripts allow-forms allow-downloads");
+  await expect(page.locator(".tab-page:not([hidden]) > iframe")).toHaveAttribute("sandbox", "allow-scripts allow-forms allow-downloads");
   const parentData = await frame.locator("body").evaluate(() => localStorage.getItem("bromine:settings"));
   expect(parentData).toBe(null);
   const parentAccess = await frame.locator("body").evaluate(() => { try { return parent.document.title; } catch (error) { return error.name; } });
@@ -314,7 +324,7 @@ test("loading diagnostics retain HTTP failures and sandbox errors after frame lo
   await expect(page.locator("#page-status")).toContainText("Site security verification required");
   frame = await openTarget(page, "https://fixture.example/unavailable-page");
   await expect(frame.getByRole("heading", { name: "Unavailable" })).toBeVisible();
-  await expect(page.locator("#page-status")).toHaveText("Site returned HTTP 503");
+  await expect(page.locator("#page-status")).toHaveText("Site returned HTTP 503; if it requests sign-in or verification, use Open directly");
   frame = await openTarget(page, fixture);
   await expect(frame.locator("#fetch-status")).toHaveText("Fetch loaded: hello");
   await frame.locator("body").evaluate(() => {
@@ -816,7 +826,8 @@ test("manual DIRECT route retains native fixture state without transferring it t
   await page.goto("/");
   await openTarget(page, fixture);
   await page.getByRole("button", { name: "Site routing" }).click();
-  await page.getByRole("button", { name: "Use DIRECT for manual verification" }).click();
+  await page.getByLabel("Route", { exact: true }).selectOption("direct");
+  await page.getByRole("button", { name: "Apply and reload", exact: true }).click();
   const frame = page.frameLocator(".tab-page:not([hidden]) iframe");
   await expect(page.locator("#route-button")).toHaveText("Direct");
   await expect(page.locator(".tab-page:not([hidden]) iframe")).toHaveAttribute("sandbox", "allow-scripts allow-forms allow-downloads allow-same-origin");
@@ -834,6 +845,54 @@ test("manual DIRECT route retains native fixture state without transferring it t
   await page.getByRole("button", { name: "Apply and reload", exact: true }).click();
   await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
   expect(await frame.locator("body").evaluate(() => localStorage.getItem("verification-fixture"))).toBe(null);
+});
+
+test("top-level site action opens a real first-party page without changing proxy route", async ({ page, context }) => {
+  test.skip(production, "Uses the deterministic native-site fixture.");
+  await context.route("https://fixture.example/**", (route) => route.fulfill({
+    contentType: "text/html",
+    body: `<title>Native sign-in fixture</title><h1>Native sign-in fixture</h1>
+      <script>document.body.dataset.topLevel = String(window === top); localStorage.setItem("native-site", "separate");</script>`,
+  }));
+  await page.goto("/");
+  const frame = await openTarget(page, fixture);
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  const popupPromise = context.waitForEvent("page");
+  await page.getByRole("button", { name: "Open current site directly", exact: true }).click();
+  const popup = await popupPromise;
+  await expect(popup.getByRole("heading", { name: "Native sign-in fixture" })).toBeVisible();
+  expect(await popup.locator("body").getAttribute("data-top-level")).toBe("true");
+  expect(await popup.evaluate(() => localStorage.getItem("native-site"))).toBe("separate");
+  await expect(page.locator("#route-button")).toHaveText("Proxy");
+  await expect(frame.getByRole("heading", { name: "Fixture page", exact: true })).toBeVisible();
+  expect(context.pages()).toHaveLength(2);
+});
+
+test("tabs restore by default and disabling restoration removes the saved session", async ({ page }) => {
+  test.skip(production, "Uses the deterministic local navigation fixture.");
+  await page.addInitScript(() => {
+    if (window !== window.top) return;
+    if (localStorage.getItem("test:legacy-settings") === "set") return;
+    localStorage.setItem("bromine:settings", JSON.stringify({
+      theme: "mocha", engine: "duckduckgo", adblock: true, mode: "proxy", restore: false, proxyEngine: "classic",
+    }));
+    localStorage.setItem("test:legacy-settings", "set");
+  });
+  await page.goto("/");
+  await expect(page.getByLabel("Restore tabs on startup")).toBeChecked();
+  await openTarget(page, "https://fixture.example/first");
+  await page.getByRole("button", { name: "New tab", exact: true }).click();
+  await openTarget(page, "https://fixture.example/second");
+  await page.reload();
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(page.getByRole("textbox", { name: "Search or enter a URL", exact: true })).toHaveValue("https://fixture.example/second");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Restore tabs on startup").uncheck();
+  expect(await page.evaluate(() => localStorage.getItem("bromine:session"))).toBe(null);
+  await page.reload();
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect(page.getByRole("textbox", { name: "Search or enter a URL", exact: true })).toHaveValue("");
 });
 
 test("live example.com loads through the real proxy with and without trailing slash", async ({ page }) => {

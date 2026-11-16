@@ -61,6 +61,11 @@ export function fixtureResponse(url, options) {
     headers["cf-mitigated"] = "challenge";
     body = "<title>Verification required</title><h1>Verification required</h1>";
   }
+  else if (url.pathname === "/cloudflare-challenge") {
+    status = 403;
+    headers.server = "cloudflare";
+    body = "<title>Just a moment...</title><script>window._cf_chl_opt = {};</script>";
+  }
   else if (url.pathname === "/unavailable-page") { status = 503; body = "<title>Unavailable</title><h1>Unavailable</h1>"; }
   else if (url.pathname === "/storage-page") body = `<title>Storage fixture</title><h1>Storage fixture</h1>
     <p id="stored-login"></p><p id="stored-session"></p><p id="stored-auth"></p>

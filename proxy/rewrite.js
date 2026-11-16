@@ -34,13 +34,11 @@ export function rewriteJavaScript(source, target, options = {}) {
   };
   const hasLocation = (node) => node?.type === "ObjectPattern" && node.properties.some((property) =>
     property.type === "Property" && (!property.computed && property.key.name === "location" || property.key.value === "location"));
-  const nodes = [ast, null, false];
+  const nodes = [ast, false];
   while (nodes.length) {
     const optionalChain = nodes.pop();
-    const parent = nodes.pop();
     const node = nodes.pop();
     if (!node || typeof node !== "object") continue;
-    if (parent && node.type === "Identifier" && node.name === "location") parents.set(node, parent);
     if (["ImportDeclaration", "ExportNamedDeclaration", "ExportAllDeclaration"].includes(node.type) && node.source) {
       changes.push({
         start: node.source.start, end: node.source.end,
@@ -65,13 +63,20 @@ export function rewriteJavaScript(source, target, options = {}) {
     for (const key in node) {
       const value = node[key];
       if (Array.isArray(value)) {
-        for (const child of value) if (child?.type) nodes.push(child, node, inOptionalChain);
+        for (const child of value) {
+          if (!child?.type) continue;
+          if (child.type === "Identifier" && child.name === "location") parents.set(child, node);
+          nodes.push(child, inOptionalChain);
+        }
       }
-      else if (value?.type) nodes.push(value, node, inOptionalChain);
+      else if (value?.type) {
+        if (value.type === "Identifier" && value.name === "location") parents.set(value, node);
+        nodes.push(value, inOptionalChain);
+      }
     }
   }
   const scopes = analyze(ast, {
-    ecmaVersion: 2024, sourceType: isModule ? "module" : "script", ignoreEval: true, fallback: "iteration",
+    ecmaVersion: 2024, sourceType: isModule ? "module" : "script", ignoreEval: true,
   });
   for (const reference of scopes.globalScope.through) {
     const node = reference.identifier;

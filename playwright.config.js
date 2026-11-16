@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const production = process.env.TEST_BASE_URL;
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "browser.spec.js",
+  testMatch: ["browser.spec.js", "scramjet.spec.js"],
   timeout: 60000,
   expect: { timeout: 15000 },
   workers: 1,

@@ -22,7 +22,7 @@
 		"prepack": "npm run build:uv",
 		"test": "node --test tests/*.test.js",
 		"test:browser": "playwright test",
-		"lint:app": "eslint frontend shared api proxy scripts tests playwright.config.js",
+		"lint:app": "eslint frontend shared api proxy scripts tests scramjet-host/*.js playwright.config.js",
 		"format": "prettier --config .prettierrc.js --write .",
 		"lint": "eslint ./src/",
 		"lint:fix": "eslint ./src/ --fix"
@@ -36,7 +36,8 @@
 		"globals": "^16.0.0",
 		"prettier": "^3.5.3",
 		"rimraf": "^6.0.1",
-		"supabase": "^3.1.0"
+		"supabase": "^3.1.0",
+		"ws": "8.22.0"
 	},
 	"dependencies": {
 		"@gorhill/ubo-core": "0.1.30",

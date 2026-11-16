@@ -7,6 +7,8 @@ import { Downloads } from "./downloads.js";
 import { connectWebSocket } from "./relay.js";
 import { cookieDomainMatches, decodeSiteCookie, encodeCookieState, encodeSiteCookie } from "../shared/cookie-jar.js";
 import { storageSeedPrefix, validStorageEntries } from "../shared/site-storage.js";
+import { connectScramjet, scramjetConfig, scramjetControl, scramjetDownload } from "./scramjet.js";
+import { validateScramjetOrigin, validateWispUrl } from "../scramjet-host/config.js";
 
 const $ = (selector) => document.querySelector(selector);
 const tabs = [];
@@ -61,19 +63,31 @@ const colorLabels = {
 const hexColor = /^#[a-f\d]{6}$/i;
 const defaults = {
   theme: "mocha", engine: "duckduckgo", adblock: true, mode: "proxy",
-  proxyDomains: [], restore: false, homepage: "", bookmarksBar: false, statusBar: true,
+  proxyEngine: "scramjet", scramjetOrigin: "", wispUrl: "",
+  proxyDomains: [], restore: true, homepage: "", bookmarksBar: false, statusBar: true,
   accent: "", colors: {}, opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
   textSize: 14, logging: true, cacheEnabled: true, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",
 };
 const settings = { ...defaults, ...readStore("bromine:settings", defaults,
   (value) => value && themes.includes(value.theme) && (Object.hasOwn(engines, value.engine) || value.engine === "bing") && typeof value.adblock === "boolean" &&
     (value.mode === undefined || ["automatic", "direct", "proxy"].includes(value.mode)) &&
+    (value.proxyEngine === undefined || ["scramjet", "classic"].includes(value.proxyEngine)) &&
+    ["scramjetOrigin", "wispUrl"].every((key) => value[key] === undefined || typeof value[key] === "string") &&
+    (value.restore === undefined || typeof value.restore === "boolean") &&
     (value.proxyDomains === undefined || Array.isArray(value.proxyDomains) && value.proxyDomains.every((rule) => typeof rule === "string")) &&
     (value.accent === undefined || value.accent === "" || /^#[a-f\d]{6}$/i.test(value.accent)) &&
     (value.colors === undefined || value.colors && !Array.isArray(value.colors) && typeof value.colors === "object" &&
       Object.entries(value.colors).every(([key, color]) => Object.hasOwn(colorLabels, key) && typeof color === "string" && hexColor.test(color))) &&
     ["opacity", "blur", "saturation", "radius", "textSize", "concurrent", "cacheLimit"].every((key) => value[key] === undefined || Number.isFinite(value[key])) &&
     (value.homepage === undefined || typeof value.homepage === "string")) };
+const restoreMigrationDone = readStore("bromine:restore-migrated", false, (value) => typeof value === "boolean");
+if (!restoreMigrationDone) {
+  if (!settings.restore) {
+    settings.restore = true;
+    writeStore("bromine:settings", settings);
+  }
+  writeStore("bromine:restore-migrated", true);
+}
 if (!settings.cacheEnabled) {
   settings.cacheEnabled = true;
   writeStore("bromine:settings", settings);
@@ -181,6 +195,9 @@ $("#proxy-domains").value = settings.proxyDomains.join("\n");
 $("#homepage").value = settings.homepage;
 $("#cache-limit").value = String(settings.cacheLimit);
 $("#download-concurrent").value = String(settings.concurrent);
+$("#proxy-engine").value = settings.proxyEngine;
+$("#scramjet-origin").value = settings.scramjetOrigin || window.BROMINE_CONFIG?.scramjetOrigin || "";
+$("#wisp-url").value = settings.wispUrl || window.BROMINE_CONFIG?.wispUrl || "";
 
 function routeFor(url) {
   return routeRequest(url, { mode: settings.mode, sites, defaultRoute: "proxy", rules: { forceProxy: settings.proxyDomains } });
@@ -285,14 +302,23 @@ function updateToolbar() {
   $('[data-action="back"]').disabled = tab.position === 0;
   $('[data-action="forward"]').disabled = tab.position === tab.stack.length - 1;
   $("#page-status").textContent = tab.status;
-  $("#route-button").textContent = entry(tab).url ? (tab.route.mode === "direct" ? "Direct" : "Proxy") : "Proxy";
+  $("#route-button").textContent = entry(tab).url && tab.route.mode === "direct" ? "Direct" :
+    (entry(tab).url ? tab.proxyEngine : settings.proxyEngine) === "scramjet" ? "Scramjet" : "Proxy";
   $("#route-button").title = tab.route?.reason || "Automatic routing";
   $('[data-action="stop"]').hidden = !tab.loading;
   $('[data-action="reload"]').hidden = tab.loading;
   document.querySelectorAll('[data-action="add-bookmark"]').forEach((button) => { button.disabled = !entry(tab).url; });
   document.querySelectorAll('[data-action="copy-url"], [data-action="clear-site-cache"]').forEach((button) => { button.disabled = !entry(tab).url; });
+  document.querySelectorAll('[data-action="open-direct"]').forEach((button) => { button.disabled = !entry(tab).url; });
   document.title = settings.cloakTitle || `${entry(tab).title} · bromine`;
   if (parent !== window) parent.postMessage({ type: "bromine:appearance", title: document.title, favicon: $('link[rel="icon"]').href }, "*");
+}
+
+function openDirectSite() {
+  const url = entry(current()).url;
+  if (!url) return;
+  window.open(validateNavigation(url).href, "_blank", "noopener,noreferrer");
+  notice("Opened the site directly in a separate browser tab for sign-in or verification. If no tab appeared, allow pop-ups. This session is separate from Proxy.");
 }
 
 function selectTab(tab) {
@@ -311,6 +337,8 @@ function selectTab(tab) {
 function closeTab(tab) {
   const index = tabs.indexOf(tab);
   clearTimeout(tab.loadTimer);
+  tab.scramjet?.close();
+  if (tab.faviconObjectUrl) URL.revokeObjectURL(tab.faviconObjectUrl);
   for (const cleanup of tab.relayCleanups || []) cleanup();
   closedTabs.unshift({ stack: tab.stack.map((row) => ({ ...row })), position: tab.position, pinned: tab.pinned });
   closedTabs.splice(20);
@@ -388,6 +416,9 @@ function createTab() {
 
 function renderPage(tab) {
   clearTimeout(tab.loadTimer);
+  tab.scramjet?.close();
+  tab.scramjet = null;
+  if (tab.faviconObjectUrl) { URL.revokeObjectURL(tab.faviconObjectUrl); tab.faviconObjectUrl = null; }
   tab.stopped = false;
   tab.documentError = null;
   tab.scriptError = false;
@@ -410,6 +441,13 @@ function renderPage(tab) {
     const frame = document.createElement("iframe");
     frame.title = `Web page: ${entry(tab).title}`;
     const direct = tab.route.mode === "direct";
+    tab.proxyEngine = settings.proxyEngine;
+    if (!direct && tab.proxyEngine === "scramjet") {
+      renderScramjetPage(tab, frame);
+      if (selected === tab.id) updateToolbar();
+      saveSession();
+      return;
+    }
     tab.storageOrigin = direct ? null : new URL(entry(tab).url).origin;
     if (!direct) {
       tab.siteSessions ||= new Map();
@@ -448,6 +486,100 @@ function renderPage(tab) {
   }
   if (selected === tab.id) updateToolbar();
   saveSession();
+}
+
+function scramjetEvent(tab, frame, data) {
+  if (tab.frame !== frame || tab.stopped) return;
+  try {
+    if (data.event === "navigation") {
+      const url = validateNavigation(data.url).href;
+      if (entry(tab).url !== url) recordNavigation(url, tab, undefined, data.replace === true);
+      tab.expectedUrl = url;
+      tab.bridgeReady = true;
+      saveSession();
+    } else if (data.event === "new-tab") {
+      navigate(validateNavigation(data.url).href, createTab());
+    } else if (data.event === "download") {
+      downloads.add(validateNavigation(data.url).href, "scramjet");
+      notice("Download started through Scramjet and Wisp.");
+    } else if (data.event === "appearance") {
+      entry(tab).title = typeof data.title === "string" ? data.title.slice(0, 160) : new URL(entry(tab).url).hostname;
+      tab.title.textContent = entry(tab).title;
+      if (data.favicon instanceof Blob && data.favicon.size <= 128 * 1024 && /^image\/(?:png|jpeg|gif|webp|avif|x-icon|vnd\.microsoft\.icon|svg\+xml)$/i.test(data.favicon.type)) {
+        if (tab.faviconObjectUrl) URL.revokeObjectURL(tab.faviconObjectUrl);
+        tab.faviconObjectUrl = URL.createObjectURL(data.favicon);
+        tab.favicon.src = tab.faviconObjectUrl;
+      }
+      if (data.faviconError) addActivity(tab, "Site favicon unavailable; using the local Bromine icon", { level: "warn" });
+      const row = history.find((row) => row.url === redactUrl(entry(tab).url));
+      if (row) { row.title = entry(tab).title; writeStore("bromine:history", history); }
+      saveSession();
+    } else if (data.event === "request" && settings.logging) {
+      validateNavigation(data.url);
+      addRequest(tab, {
+        url: data.url, method: String(data.method).slice(0, 12), type: String(data.type).slice(0, 30),
+        status: Number.isInteger(data.status) ? data.status : "FAILED", route: "scramjet",
+        size: Number.isFinite(data.size) ? data.size : null, duration: Number.isFinite(data.duration) ? data.duration : null,
+        filter: ["BLOCKED", "CACHE HIT", "ALLOWED"].includes(data.filter) ? data.filter : "Unknown",
+      });
+    } else if (["progress", "error", "loaded"].includes(data.event) && typeof data.message === "string") {
+      const message = data.message.slice(0, 300);
+      if (data.failed || data.event === "error") tab.documentError = message;
+      tab.status = tab.documentError || message;
+      if (data.event === "loaded" || data.event === "error") {
+        tab.loading = false;
+        tab.bridgeReady = true;
+        clearTimeout(tab.loadTimer);
+      }
+      addActivity(tab, message, { level: data.failed || data.event === "error" ? "error" : "info", url: data.url || entry(tab).url });
+    }
+    if (selected === tab.id) updateToolbar();
+  } catch { notice("Invalid Scramjet browser metadata was rejected."); }
+}
+
+function renderScramjetPage(tab, frame) {
+  tab.frame = frame;
+  tab.storageOrigin = null;
+  tab.loading = true;
+  tab.bridgeReady = false;
+  tab.expectedUrl = entry(tab).url;
+  tab.status = "Starting Scramjet; connecting to isolated frontend";
+  addActivity(tab, tab.status, { url: entry(tab).url });
+  try {
+    const config = scramjetConfig({ ...settings, adblock: sites[new URL(entry(tab).url).hostname]?.adblock ?? settings.adblock });
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-downloads");
+    frame.referrerPolicy = "no-referrer";
+    const bridge = connectScramjet(frame, config, (data) => scramjetEvent(tab, frame, data));
+    tab.scramjet = bridge;
+    tab.page.append(frame);
+    tab.loadTimer = setTimeout(() => {
+      if (tab.scramjet !== bridge || !tab.loading) return;
+      tab.status = tab.documentError || "Scramjet is still loading; check the Wisp server and Loading console";
+      addActivity(tab, tab.status, { level: "warn", url: entry(tab).url });
+      if (selected === tab.id) updateToolbar();
+    }, 20000);
+    bridge.command("navigate", { config, url: entry(tab).url, cacheVersion: cacheVersionFor(entry(tab).url) }).catch((error) => {
+      if (tab.scramjet !== bridge || tab.stopped) return;
+      tab.loading = false;
+      tab.documentError = error.message;
+      tab.status = error.message;
+      addActivity(tab, error.message, { level: "error", url: entry(tab).url });
+      if (selected === tab.id) updateToolbar();
+      notice(error.message);
+    });
+  } catch (error) {
+    tab.loading = false;
+    tab.status = error.message;
+    const message = document.createElement("p");
+    message.textContent = error.message;
+    message.setAttribute("role", "alert");
+    const configure = document.createElement("button");
+    configure.className = "secondary-button";
+    configure.textContent = "Configure Scramjet";
+    configure.addEventListener("click", () => openDialog("settings"));
+    tab.page.append(message, configure);
+    addActivity(tab, error.message, { level: "error", url: entry(tab).url });
+  }
 }
 
 function recordNavigation(url, tab, title = new URL(url).hostname, replace = false) {
@@ -532,6 +664,7 @@ const actions = {
     const tab = current();
     clearTimeout(tab.loadTimer);
     tab.stopped = true;
+    tab.scramjet?.close();
     tab.frame?.contentWindow.postMessage({ type: "bromine:stop" }, "*");
     if (tab.frame) tab.frame.src = "about:blank";
     tab.loading = false; tab.status = "Stopped"; addActivity(tab, "Loading stopped by user"); updateToolbar();
@@ -556,6 +689,7 @@ const actions = {
   cache: () => openDialog("cache"),
   inspector: () => openDialog("inspector"),
   console: () => openDialog("console"),
+  "open-direct": () => openDirectSite(),
   "copy-url": async () => {
     try { await navigator.clipboard.writeText(entry(current()).url); notice("Current URL copied."); }
     catch { notice("The browser could not copy this URL. Select and copy it from the address bar."); }
@@ -639,10 +773,40 @@ for (const [id, key, kind] of [
   else input.value = String(settings[key]);
   input.addEventListener("change", () => {
     settings[key] = kind === "boolean" ? input.checked : kind === "number" ? Number(input.value) : input.value;
-    applyAppearance(); writeStore("bromine:settings", settings); saveSession();
+    applyAppearance(); writeStore("bromine:settings", settings);
+    if (key === "restore" && !settings.restore) {
+      try { localStorage.removeItem("bromine:session"); }
+      catch { notice("Saved tabs could not be removed from browser storage."); }
+    }
+    saveSession();
     if (key === "logging" && !settings.logging) tabs.forEach((tab) => { tab.requests = []; });
-    if (key === "logging") tabs.forEach((tab) => tab.frame?.contentWindow.postMessage({ type: "bromine:logging", enabled: settings.logging }, "*"));
+    if (key === "logging") tabs.forEach((tab) => {
+      if (tab.scramjet) tab.scramjet.command("logging", { enabled: settings.logging }).catch((error) => notice(error.message));
+      else tab.frame?.contentWindow.postMessage({ type: "bromine:logging", enabled: settings.logging }, "*");
+    });
     if (key === "mode") notice("Routing updated. Reload open pages to apply it.");
+  });
+}
+$("#proxy-engine").addEventListener("change", (event) => {
+  settings.proxyEngine = event.target.value;
+  writeStore("bromine:settings", settings);
+  if (!entry(current()).url) updateToolbar();
+  notice("Proxy engine updated. Reload open pages to apply it; login storage is separate for each engine.");
+});
+for (const [id, key, validate] of [
+  ["scramjet-origin", "scramjetOrigin", (value) => validateScramjetOrigin(value, location.origin)],
+  ["wisp-url", "wispUrl", validateWispUrl],
+]) {
+  $(`#${id}`).addEventListener("change", (event) => {
+    try {
+      settings[key] = event.target.value.trim() ? validate(event.target.value.trim()) : "";
+      writeStore("bromine:settings", settings);
+      event.target.value = settings[key] || window.BROMINE_CONFIG?.[key] || "";
+      notice("Scramjet connection updated. Reload open pages to apply it.");
+    } catch (error) {
+      notice(error.message);
+      event.target.value = settings[key] || window.BROMINE_CONFIG?.[key] || "";
+    }
   });
 }
 $("#proxy-domains").addEventListener("change", () => {
@@ -668,14 +832,22 @@ $("#apply-site").addEventListener("click", () => {
   renderPage(current(), true);
 });
 $("#verify-direct").addEventListener("click", () => {
-  $("#site-route").value = "direct";
-  $("#apply-site").click();
-  notice("This site stays DIRECT for manual verification and login. Browser cookie restrictions still apply. Switching to Proxy does not transfer the session.");
+  $("#routing-dialog").close();
+  openDirectSite();
 });
-$("#clear-site-storage").addEventListener("click", () => {
+$("#clear-site-storage").addEventListener("click", async () => {
   const url = entry(current()).url;
   if (!url) return;
   const origin = new URL(url).origin;
+  if (current().scramjet) {
+    try {
+      await current().scramjet.command("clear-storage", { url });
+      for (const tab of tabs) if (tab.scramjet && new URL(entry(tab).url).origin === origin) renderPage(tab);
+      $("#routing-dialog").close();
+      notice("This site's Scramjet LocalStorage and SessionStorage were cleared. Cookies are unchanged.");
+    } catch (error) { notice(error.message); }
+    return;
+  }
   try { localStorage.removeItem(storageSeedPrefix + origin); }
   catch { notice("Site storage could not be cleared because browser storage is unavailable."); return; }
   for (const tab of tabs) {
@@ -707,7 +879,7 @@ document.addEventListener("keydown", (event) => {
 window.addEventListener("message", (event) => {
   const tab = tabs.find((item) => item.frame?.contentWindow === event.source);
   const data = event.data;
-  if (!tab || tab.stopped || !data || typeof data !== "object") return;
+  if (!tab || tab.scramjet || tab.stopped || !data || typeof data !== "object") return;
   if (data.type === "bromine:storage") {
     if (tab.route?.mode !== "proxy" || data.requestUrl !== tab.expectedUrl || data.origin !== tab.storageOrigin ||
         data.bridgeId !== tab.storageBridgeId ||
@@ -724,15 +896,16 @@ window.addEventListener("message", (event) => {
       bootstrap: "Document received; executing scripts and styles",
       loaded: "Frame load completed; site functionality is not verified",
       "script-error": "A page script failed; a successful resource download does not guarantee script execution",
-      "sandbox-error": "A page script hit a sandbox security restriction",
+      "sandbox-error": "A page script hit a sandbox security restriction; try Open directly for first-party behavior",
       "request-start": "Starting API request",
       "request-error": "An API request failed",
     };
     if (!Object.hasOwn(stages, data.stage)) return;
     const failed = data.stage.endsWith("error");
     if (data.stage === "bootstrap") {
-      tab.documentError = data.verification === true ? "Site security verification required; it may not work inside Proxy" :
-        Number.isInteger(data.status) && data.status >= 400 && data.status <= 599 ? `Site returned HTTP ${data.status}` : null;
+      tab.documentError = data.verification === true ? "Site security verification required; use Open directly for first-party verification" :
+        Number.isInteger(data.status) && data.status >= 400 && data.status <= 599 ?
+          `Site returned HTTP ${data.status}; if it requests sign-in or verification, use Open directly` : null;
       if (tab.documentError) addActivity(tab, tab.documentError, { level: "error", url: entry(tab).url });
     }
     if (data.stage === "script-error" || data.stage === "sandbox-error") tab.scriptError = true;
@@ -746,7 +919,7 @@ window.addEventListener("message", (event) => {
   } else if (data.type === "bromine:download" && data.requestUrl === tab.expectedUrl && typeof data.url === "string") {
     try {
       const url = validateNavigation(data.url).href;
-      downloads.add(url);
+      downloads.add(url, "classic");
       addActivity(tab, "Download queued through Proxy", { url });
       notice("Download started through Proxy.");
     } catch (error) { notice(error.message); }
@@ -893,12 +1066,13 @@ $("#import-bookmarks").addEventListener("change", async (event) => {
 saveBookmarks();
 
 const downloads = new Downloads({
-  route: routeFor, options: () => ({ concurrent: settings.concurrent, adblock: settings.adblock }),
+  route: routeFor, options: () => ({ concurrent: settings.concurrent, adblock: settings.adblock, proxyEngine: settings.proxyEngine }),
+  fetchResource: (url, options) => scramjetDownload(scramjetConfig(settings), url, options),
   changed: () => { if ($("#downloads-dialog").open) renderDownloads(); writeStore("bromine:downloads", downloads.snapshot()); },
   notify: notice,
 });
 const priorDownloads = readStore("bromine:downloads", [], (value) => Array.isArray(value) && value.length <= 50 &&
-  value.every((row) => row && typeof row.url === "string" && /^https?:\/\//.test(row.url) && typeof row.name === "string" && ["direct", "proxy"].includes(row.route)));
+  value.every((row) => row && typeof row.url === "string" && /^https?:\/\//.test(row.url) && typeof row.name === "string" && ["direct", "proxy", "scramjet"].includes(row.route)));
 downloads.items = priorDownloads.map((row) => ({ ...row, id: crypto.randomUUID(), status: "historical", chunks: [] }));
 
 function renderDownloads() {
@@ -928,14 +1102,34 @@ $("#download-concurrent").addEventListener("change", (event) => { settings.concu
 async function refreshCache() {
   const stats = await configureCache({ enabled: true, limitMB: settings.cacheLimit });
   $("#cache-usage").textContent = `${(stats.bytes / 1024 / 1024).toFixed(2)} MB / ${stats.limitMB} MB · ${stats.entries} resources`;
+  if (settings.scramjetOrigin || window.BROMINE_CONFIG?.scramjetOrigin) {
+    const config = scramjetConfig(settings, { network: false });
+    const remote = await scramjetControl(config, (data) => { if (data.event === "error") notice(data.message); }).command("cache-stats", { config });
+    $("#scramjet-cache-usage").textContent = `Scramjet: ${(remote.bytes / 1024 / 1024).toFixed(2)} MB / ${remote.limitMB} MB · ${remote.entries} resources`;
+  } else $("#scramjet-cache-usage").textContent = "Scramjet cache: configure the isolated frontend to inspect its local public assets.";
+}
+async function clearScramjetCache(options) {
+  if (!settings.scramjetOrigin && !window.BROMINE_CONFIG?.scramjetOrigin) return;
+  const config = scramjetConfig(settings, { network: false });
+  await scramjetControl(config).command("cache-clear", options);
 }
 $("#cache-limit").addEventListener("change", async () => {
   settings.cacheLimit = Number($("#cache-limit").value);
   writeStore("bromine:settings", settings);
-  try { await refreshCache(); } catch (error) { notice(error.message); }
+  try {
+    await Promise.all(tabs.filter((tab) => tab.scramjet && !tab.stopped).map((tab) =>
+      tab.scramjet.command("cache-stats", { config: { ...tab.scramjet.config, limitMB: settings.cacheLimit } })));
+    await refreshCache();
+  } catch (error) { notice(error.message); }
 });
 $("#clear-cache").addEventListener("click", async () => {
-  try { await cacheCommand({ action: "clear", category: $("#cache-category").value }); invalidateAssetVersion(); await refreshCache(); }
+  try {
+    const category = $("#cache-category").value;
+    await cacheCommand({ action: "clear", category });
+    await clearScramjetCache({ category });
+    invalidateAssetVersion();
+    await refreshCache();
+  }
   catch (error) { notice(error.message); }
 });
 async function clearCurrentSiteCache() {
@@ -943,6 +1137,7 @@ async function clearCurrentSiteCache() {
   try {
     await configureCache({ enabled: true, limitMB: settings.cacheLimit });
     await cacheCommand({ action: "clear", site: new URL(entry(current()).url).hostname });
+    await clearScramjetCache({ site: new URL(entry(current()).url).hostname });
     invalidateAssetVersion(new URL(entry(current()).url).hostname);
     await refreshCache();
     addActivity(current(), "Current site cache cleared", { url: entry(current()).url });
@@ -958,7 +1153,7 @@ function renderRequests() {
   $("#request-list").replaceChildren();
   const filter = $("#inspector-filter").value;
   const rows = current().requests.filter((row) => !filter || row.route === filter || row.type === filter ||
-    filter === "blocked" && row.filter === "BLOCKED" || filter === "failed" && Number(row.status) >= 400);
+    filter === "blocked" && row.filter === "BLOCKED" || filter === "failed" && (row.status === "FAILED" || Number(row.status) >= 400));
   for (const row of rows) {
     const tr = document.createElement("tr");
     for (const value of [`${row.method} ${row.url}`, row.type, row.status, row.route, row.size === null ? "Unknown" : `${row.size} B`, row.duration === null ? "Unknown" : `${row.duration.toFixed(0)} ms`, row.filter]) {
