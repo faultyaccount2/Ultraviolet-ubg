@@ -1,22 +1,16 @@
 {
-  "name": "bromine-wisp-server",
-  "version": "1.0.0",
+  "name": "bromine-wisp",
+  "version": "2.0.0",
   "private": true,
-  "description": "Standalone Wisp server for Ultraviolet/Scramjet, ready for Render",
+  "description": "Wisp v1 server on Cloudflare Workers for Ultraviolet/Scramjet",
   "type": "module",
-  "main": "server.js",
   "license": "GPL-3.0-or-later",
-  "engines": {
-    "node": ">=20"
-  },
   "scripts": {
-    "start": "node server.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "test": "node --test test/*.test.js"
   },
-  "dependencies": {
-    "@mercuryworkshop/wisp-js": "^0.5.3"
-  },
   "devDependencies": {
-    "ws": "^8.23.0"
+    "wrangler": "^4.40.0"
   }
 }

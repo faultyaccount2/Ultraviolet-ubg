@@ -1,32 +1,80 @@
-# Wisp server (Render)
+# Bromine Wisp (Cloudflare Worker)
 
-Standalone Wisp server for Ultraviolet / Scramjet / bare-mux transports.
-Endpoint: `wss://<your-service>.onrender.com/wisp/` · Health: `/healthz`
+A Wisp v1 server that runs on Cloudflare Workers, for Ultraviolet / Scramjet via
+bare-mux (epoxy or libcurl transport). Free, no credit card.
 
-## Deploy on Render
-1. New > Web Service > connect this repo.
-2. Root Directory: `wisp` · Runtime: Node
-3. Build: `npm ci --omit=dev` · Start: `node server.js`
-4. Health Check Path: `/healthz`
-5. Optional env: `WISP_ALLOWED_ORIGINS=https://your-frontend.example`
-(Or use the `render.yaml` Blueprint at the repo root.)
+Written in plain JavaScript (no Rust build), inspired by
+[MercuryWorkshop/wisp-server-workers](https://github.com/mercuryworkshop/wisp-server-workers).
 
-## Settings (all optional)
-| Variable | Default | Meaning |
-|---|---|---|
-| `WISP_ALLOWED_ORIGINS` | any | Comma list of exact origins allowed to open the socket (browser check only, not auth) |
-| `WISP_ALLOWED_HOSTS` | any public host | Destination allowlist, e.g. `example.com,*.discord.gg` |
-| `WISP_BLOCKED_HOSTS` | none | Destination blocklist (can't combine with allowlist) |
+Your Wisp URL once deployed:
+
+```
+wss://bromine-wisp.<your-subdomain>.workers.dev/wisp/
+```
+
+## Deploy from the Cloudflare dashboard (no CLI)
+
+1. Sign up / log in at dash.cloudflare.com (free, no card).
+2. **Workers & Pages** → **Create** → **Import a repository** → pick `faultyaccount2/Ultraviolet-ubg`.
+3. **Project name:** `bromine-wisp`
+4. **Advanced → Root directory:** `wisp`
+5. **Build command:** leave empty. **Deploy command:** `npx wrangler deploy`
+6. Deploy. The workers.dev address appears on the Worker's page.
+
+## Deploy from a terminal (e.g. your Codespace)
+
+```bash
+cd wisp
+npm install
+npx wrangler login
+npx wrangler deploy
+```
+
+## Point the frontend at it
+
+Set the Wisp URL in the proxy's transport config, e.g.
+
+```js
+await connection.setTransport("/epoxy/index.mjs", [{ wisp: "wss://bromine-wisp.<you>.workers.dev/wisp/" }]);
+```
+
+## Settings (Worker → Settings → Variables, or `[vars]` in wrangler.toml)
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `WISP_PATH` | `/wisp/` | Endpoint path |
+| `WISP_ALLOWED_ORIGINS` | (any) | Comma list of exact origins allowed to connect, e.g. `https://your-site.vercel.app` |
 | `WISP_ALLOWED_PORTS` | `80,443` | Destination ports or ranges |
-| `WISP_ALLOW_UDP` | `false` | Allow UDP streams |
-| `WISP_STREAM_LIMIT_TOTAL` | `128` | Streams per connection |
-| `WISP_STREAM_LIMIT_PER_HOST` | `32` | Streams per destination per connection |
-| `WISP_MAX_CONNECTIONS_PER_IP` | `8` | Concurrent sockets per client IP |
-| `WISP_PATH` | `/wisp/` | WebSocket path |
-| `WISP_LOG_LEVEL` | `info` | debug, info, warn, error, none |
+| `WISP_ALLOWED_HOSTS` / `WISP_BLOCKED_HOSTS` | none | Destination allow or block list (`example.com`, `*.example.com`); set one, not both |
+| `WISP_ALLOW_DIRECT_IP` | `false` | Allow raw IP destinations |
+| `WISP_STREAM_LIMIT_TOTAL` | `32` | Max open streams per connection |
+| `WISP_STREAM_LIMIT_PER_HOST` | `6` | Max open streams to one host per connection |
+| `WISP_BUFFER_SIZE` | `128` | Wisp flow-control buffer, in packets |
+| `WISP_CONNECT_TIMEOUT_MS` | `10000` | TCP connect timeout |
+| `WISP_DEBUG` | `false` | Log blocked/failed streams |
 
-Always blocked: loopback, private/LAN, link-local, and direct-IP destinations.
-Free Render instances sleep after idle time, so the first connection can take up to a minute.
+`GET /healthz` returns `ok`.
 
-## Test
-`npm install && npm test`
+## Cloudflare limits to know
+
+- **Sites hosted on Cloudflare can't be reached.** Workers block outbound TCP to
+  Cloudflare IP ranges, so those streams close with "unreachable".
+- **Free plan CPU is 10 ms per request**, and a whole Wisp session counts as one
+  request. Relaying is light, but long heavy sessions can hit error 1102 and
+  disconnect; the client reconnects.
+- **No UDP.** TCP only.
+- 100,000 requests a day on the free plan (each Wisp connection is one).
+- Only 6 TCP connects can be *in progress* at once per session; extra ones queue.
+
+## Other ways to run it
+
+`wisp/node/` keeps the Node.js server (`node server.js`) for a VPS, Codespace, or
+Render (`render.yaml` points at it).
+
+## Tests
+
+```bash
+cd wisp && node --test test/*.test.js
+```
+
+License: GPL-3.0-or-later.

@@ -1,0 +1,10 @@
+name = "bromine-wisp"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+WISP_PATH = "/wisp/"
+WISP_ALLOWED_PORTS = "80,443"
+# Optional. Uncomment and set to your frontend's exact origin(s), comma-separated:
+# WISP_ALLOWED_ORIGINS = "https://your-site.vercel.app"

@@ -1,0 +1,22 @@
+{
+  "name": "bromine-wisp-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone Wisp server for Ultraviolet/Scramjet, ready for Render",
+  "type": "module",
+  "main": "server.js",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@mercuryworkshop/wisp-js": "^0.5.3"
+  },
+  "devDependencies": {
+    "ws": "^8.23.0"
+  }
+}

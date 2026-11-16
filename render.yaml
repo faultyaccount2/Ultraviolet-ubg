@@ -2,7 +2,7 @@ services:
   - type: web
     name: bromine-wisp
     runtime: node
-    rootDir: wisp
+    rootDir: wisp/node
     plan: free
     buildCommand: npm ci --omit=dev
     startCommand: node server.js
