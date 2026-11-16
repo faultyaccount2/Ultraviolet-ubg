@@ -115,6 +115,12 @@ export async function createEngine(element, config, cache, emit) {
           documents.set(documentKey(parsed.url.href), { status: response.status, verification: response.headers.get("cf-mitigated") === "challenge" });
           if (documents.size > 50) documents.delete(documents.keys().next().value);
         }
+        if (response.status >= 400 && ["script", "style", "stylesheet"].includes(parsed.destination)) {
+          emit({
+            event: "progress", failed: true, url: redactUrl(parsed.url.href),
+            message: `Website ${requestType(parsed.destination)} returned HTTP ${response.status} through ${label}; the page may be blank or incomplete. Use Open directly or inspect the failed request.`,
+          });
+        }
         const options = requests.get(request);
         if (options && !options.hit) cache.put(options, response, response.rawHeaders);
       });

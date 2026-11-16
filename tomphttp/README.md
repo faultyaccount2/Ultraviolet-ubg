@@ -9,6 +9,12 @@ Uses Workers `fetch()`, not raw TCP. This can reach Cloudflare-hosted sites,
 but does not solve or bypass Cloudflare verification, CAPTCHA, login, or site
 restrictions. Worker HTTP header normalization, platform-added headers and TLS
 fingerprints still apply; this is not a byte-for-byte raw HTTP transport.
+For example, Discord currently rejects Worker asset requests with HTTP 400
+`Bad Worker Origin`, leaving its login page blank. Reaching a site's HTML does
+not mean its scripts or sign-in will work. Scramjet reports failed script and
+stylesheet responses in its status and loading console. Use direct browsing
+for rejected sites; a Wisp Worker on Cloudflare cannot reach Cloudflare IPs
+either.
 
 ## Deploy using the dashboard
 

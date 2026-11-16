@@ -65,7 +65,10 @@ export function startStandalone() {
         tab.favicon = message.favicon ? URL.createObjectURL(message.favicon) : "";
       }
     }
-    if (["progress", "error", "loaded"].includes(message.event) && message.message) tab.status = message.message;
+    if (["progress", "error", "loaded"].includes(message.event) && message.message) {
+      if (message.failed || message.event === "error") tab.error = message.message;
+      tab.status = tab.error || message.message;
+    }
     if (message.event === "new-tab") { add(message.url); return; }
     if (message.event === "download") {
       try { tab.downloads.add(validateNavigation(message.url).href); }
@@ -80,6 +83,7 @@ export function startStandalone() {
       tab.url = url;
       if (tab === current) { editingAddress = false; address.value = url; }
       tab.title = new URL(url).hostname;
+      tab.error = "";
       tab.status = `Connecting through ${tab.config.transport === "bare" ? "Bare" : "Wisp"}...`;
       render();
       await tab.bridge.command("navigate", { url, config: tab.config });

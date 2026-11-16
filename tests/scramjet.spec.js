@@ -82,6 +82,32 @@ test("Scramjet is primary and its actual rewriter loads scripts, modules, APIs a
   expect(legacyRequests).toEqual([]);
 });
 
+test("rejected Bare scripts leave a persistent failure instead of a frame-loaded status", async ({ page }) => {
+  test.skip(production, "Uses a local Bare fixture with a rejected script.");
+  await page.goto("/");
+  await page.locator("#address").fill("https://bare-fixture.org/broken");
+  await page.locator("#address").press("Enter");
+  await expect(page.locator("#page-status")).toContainText("Website script returned HTTP 400 through Bare");
+  await page.getByRole("button", { name: "Loading console", exact: true }).click();
+  await expect(page.locator("#console-list")).toContainText("Scramjet frame loaded");
+  await page.getByRole("button", { name: "Close loading console", exact: true }).click();
+  await expect(page.locator("#page-status")).toContainText("Website script returned HTTP 400 through Bare");
+  await page.locator("#address").fill("https://bare-fixture.org/next");
+  await page.locator("#address").press("Enter");
+  await expect(page.frameLocator(".tab-page:not([hidden]) > iframe").frameLocator("#site").getByRole("heading", { name: "Next Bare page" })).toBeVisible();
+  await expect(page.locator("#page-status")).not.toContainText("HTTP 400");
+  await page.goto("http://127.0.0.1:4174/");
+  await page.getByRole("textbox", { name: "Website URL", exact: true }).fill("https://bare-fixture.org/broken");
+  await page.getByRole("button", { name: "Go", exact: true }).click();
+  const standalone = page.frameLocator(".standalone-frame:not([hidden])").frameLocator("#site");
+  await expect(standalone.locator("body")).toBeAttached();
+  await expect(page.locator("#status")).toContainText("Website script returned HTTP 400 through Bare");
+  await page.getByRole("textbox", { name: "Website URL", exact: true }).fill("https://bare-fixture.org/next");
+  await page.getByRole("button", { name: "Go", exact: true }).click();
+  await expect(standalone.getByRole("heading", { name: "Next Bare page" })).toBeVisible();
+  await expect(page.locator("#status")).not.toContainText("HTTP 400");
+});
+
 test("Scramjet public assets hit its bounded cache and site clearing fetches fresh resources", async ({ page, request }) => {
   test.skip(production, "Uses a deterministic Wisp asset fixture.");
   const { frame } = await openScramjet(page);
@@ -169,6 +195,9 @@ test("Scramjet clears the current site's saved storage without deleting another 
 test("Scramjet retains document HTTP and verification errors after its load event", async ({ page }) => {
   test.skip(production, "Uses explicit HTTP and verification fixture responses.");
   await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Scramjet transport", { exact: true }).selectOption("wisp");
+  await page.getByRole("button", { name: "Close settings" }).click();
   const frame = page.frameLocator(".tab-page:not([hidden]) > iframe").frameLocator("#site");
   for (const [path, message] of [["not-found", "HTTP 404"], ["challenge", "Site verification required"]]) {
     await page.locator("#address").fill(`${target}${path}`);
