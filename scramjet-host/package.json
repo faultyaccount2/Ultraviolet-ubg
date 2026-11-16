@@ -8,6 +8,7 @@
     "build": "node build.js"
   },
   "dependencies": {
+    "@mercuryworkshop/bare-transport": "^1.0.0",
     "@gorhill/ubo-core": "0.1.30",
     "@mercuryworkshop/libcurl-transport": "2.0.6",
     "@mercuryworkshop/scramjet": "2.0.67-alpha.2",

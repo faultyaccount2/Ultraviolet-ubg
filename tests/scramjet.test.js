@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { MemoryCacheStorage } from "../frontend/memory-cache.js";
 import { scramjetControl } from "../frontend/scramjet.js";
-import { validateScramjetOrigin, validateWispUrl } from "../scramjet-host/config.js";
+import { validateBareUrl, validateScramjetOrigin, validateTransport, validateWispUrl } from "../scramjet-host/config.js";
 import { PublicAssetCache, publicAssetRequest, publicAssetTtl } from "../scramjet-host/cache.js";
 import { isBlocked as browserBlocked, loadFiltering } from "../scramjet-host/filtering.js";
 import { isBlocked as backendBlocked } from "../proxy/filtering.js";
@@ -15,6 +15,20 @@ test("Scramjet requires a separate secure frontend and a valid public Wisp URL",
   assert.throws(() => validateScramjetOrigin("http://scramjet.example", "https://bromine.example"), /HTTPS/);
   for (const value of ["https://server.example/wisp/", "ws://server.example/wisp/", "wss://server.example/wisp/?token=secret", "wss://user:pass@server.example/wisp/", "wss://server.example/wisp"]) {
     assert.throws(() => validateWispUrl(value));
+  }
+});
+
+test("Bare is always the default and explicit Wisp selection remains independent", () => {
+  const config = { bareUrl: "https://bare.example.org/bare/", wispUrl: "wss://wisp.example.org/wisp/" };
+  assert.equal(validateTransport(config), "bare");
+  assert.equal(validateTransport({ ...config, transport: "wisp", bareUrl: "invalid" }), "wisp");
+  assert.equal(validateTransport({ wispUrl: config.wispUrl }), "bare");
+  assert.equal(validateTransport({ wispUrl: config.wispUrl, transport: "wisp" }), "wisp");
+  assert.equal(validateTransport({ transport: "bare", wispUrl: config.wispUrl }), "bare");
+  assert.throws(() => validateTransport({ ...config, transport: "unknown" }), /Choose/);
+  assert.equal(validateBareUrl("http://127.0.0.1:8787/bare/"), "http://127.0.0.1:8787/bare/");
+  for (const value of ["http://bare.example.org/bare/", "https://user:pass@bare.example.org/bare/", "https://bare.example.org/bare", "https://bare.example.org/bare/?token=secret"]) {
+    assert.throws(() => validateBareUrl(value));
   }
 });
 
@@ -68,6 +82,13 @@ test("Scramjet control frame is recreated when its Wisp endpoint or filtering mo
   frames[2].bridge = changedFiltering;
   assert.notEqual(changedFiltering, changedEndpoint);
   assert.equal(frames[1].removed, true);
+
+  const changedTransport = scramjetControl({ ...config, transport: "bare", bareUrl: "http://127.0.0.1:8787/bare/" });
+  frames[3].bridge = changedTransport;
+  assert.notEqual(changedTransport, changedFiltering);
+  const changedBare = scramjetControl({ ...config, transport: "bare", bareUrl: "http://127.0.0.1:8788/bare/" });
+  frames[4].bridge = changedBare;
+  assert.notEqual(changedBare, changedTransport);
 });
 
 test("Scramjet cache excludes private, credentialed and API requests and accounts for upstream age", () => {

@@ -64,17 +64,18 @@ Shortcuts use Alt+T/W/L/R and Alt+Left/Right to avoid taking over browser
 Ctrl/Cmd shortcuts. Icons and favicons are local SVGs; typography deliberately
 uses system fonts instead of the missing, obfuscated Switzer font.
 
-## Scramjet and Wisp setup
+## Scramjet transport setup
 
 There are three separate deployment roles:
 
 1. **Bromine UI:** this repository's root Vercel project.
 2. **Scramjet frontend:** the static `scramjet-host/` workspace, deployed on
-   a different HTTPS origin. It contains Scramjet, libcurl, its service worker,
+   a different HTTPS origin. It contains Scramjet, Bare/libcurl transports, its service worker,
    network filtering, and a browser-local public asset cache. It is not a Wisp
    server. Separate subdomains of your own domain are preferable when available,
    because browser third-party storage restrictions can affect unrelated sites.
-3. **Wisp:** the separately deployed Cloudflare Worker in `wisp/`, currently
+3. **Transport backend:** the Bare HTTP-fetch Worker in
+   [`tomphttp/`](./tomphttp/README.md), or the Wisp Worker in `wisp/`, currently
    available at `wss://bromine-wisp.iknowikea.workers.dev/wisp/`.
    The Node alternative in `wisp/node/` can run on a TCP-capable host.
 
@@ -101,6 +102,7 @@ For the Scramjet project, set these **public** build variables for Production:
 ```text
 BROMINE_APP_ORIGINS=https://ultraviolet-ubg.vercel.app
 BROMINE_WISP_URL=wss://bromine-wisp.iknowikea.workers.dev/wisp/
+BROMINE_BARE_URL=https://bromine-bare.e42xec.workers.dev/bare/
 ```
 
 Deploy it first. On the existing Bromine UI project, keep Root Directory at
@@ -111,14 +113,17 @@ Production and redeploy:
 ```text
 BROMINE_SCRAMJET_ORIGIN=https://scramjet-ubg.vercel.app
 BROMINE_WISP_URL=wss://bromine-wisp.iknowikea.workers.dev/wisp/
+BROMINE_BARE_URL=https://bromine-bare.e42xec.workers.dev/bare/
 ```
 
 Use the actual production domain Vercel assigns to the new Scramjet project
 if it differs from `scramjet-ubg.vercel.app`. If Bromine uses another domain,
 put that exact origin in `BROMINE_APP_ORIGINS` and redeploy Scramjet too.
 Opening `https://scramjet-ubg.vercel.app` directly shows a standalone proxy
-with an address bar, reload and website downloads, using its own
-`BROMINE_WISP_URL`. When embedded, Bromine still sends its endpoint over the
+with an address bar, reload, transport selector, tabs and website downloads, using its own
+build endpoints. The deployed Bare URL is the build default; `BROMINE_BARE_URL`
+can override it.
+When embedded, Bromine still sends its endpoint over the
 validated app connection and the standalone toolbar stays hidden.
 The Worker origin allowlist, if configured,
 must include the **Scramjet frontend origin**, where its WebSocket originates.
@@ -131,12 +136,18 @@ The separate Scramjet origin is validated before enabling normal-origin
 iframes. Never host Scramjet's executable website frames on Bromine's UI origin
 or add `allow-same-origin` to Classic's opaque frames.
 
-Scramjet uses Wisp for its website HTTP(S), fetch/XHR, downloads and WebSocket
+Scramjet uses the selected Bare or Wisp transport for HTTP(S), fetch/XHR, downloads and WebSocket
 traffic; it does not depend on the Classic gateway or Supabase relay. An invalid,
 missing or unreachable connection produces an explicit error, never a silent
 Classic fallback. **Settings → Proxy engine → Classic HTTP proxy** is a manual
 alternative; reload open pages after changing engines or endpoints. Changing
-engines does not migrate website login state.
+engines does not migrate website login state. Bare is the default transport
+for every Scramjet page. Settings can explicitly select Wisp instead;
+unreachable Bare is reported, not silently replaced by Wisp.
+The existing Wisp implementation uses libcurl, not epoxy.
+Standalone tabs keep their pages loaded when switched, show titles/favicons,
+and handle website new-tab links inside the frontend. New/switch/close controls
+are keyboard accessible; Alt+T/W/L from its toolbar creates/closes/focuses a tab.
 
 The Wisp operator must independently restrict allowed app origins, public DNS
 destinations, ports and resource usage. Frontend validation cannot secure a
@@ -145,8 +156,10 @@ site restrictions, third-party storage policies, CAPTCHA, OAuth and DRM can
 still prevent websites from working. Neither engine bypasses verification.
 Browser fixtures do not establish Google, chess.com, YouTube or demongacha
 production compatibility.
-Cloudflare Workers cannot open TCP connections to Cloudflare IP ranges, so
-sites behind Cloudflare will not load through this Worker. Use a non-Cloudflare
+Cloudflare Wisp Workers cannot open TCP connections to Cloudflare IP ranges, so
+sites behind Cloudflare will not load through the Wisp Worker. The Bare Worker
+uses HTTP fetch instead and can reach those hosts, but verification can still
+refuse proxy traffic. Use a non-Cloudflare
 destination such as `http://neverssl.com/` for a live smoke test; occasional
 timeouts or upstream refusals still need to be reported, not treated as success.
 NeverSSL intentionally redirects its homepage to a random `neverssl.com`
@@ -161,7 +174,8 @@ The isolated build includes the [AGPL license](./LICENSE). Corresponding source
 and dependency versions are available in this repository and its lockfile:
 [Scramjet](https://github.com/MercuryWorkshop/scramjet),
 [controller](https://github.com/MercuryWorkshop/scramjet-controller),
-[libcurl transport](https://github.com/MercuryWorkshop/libcurl-transport), and
+[libcurl transport](https://github.com/MercuryWorkshop/libcurl-transport),
+[Bare transport (LGPL-3.0)](https://github.com/MercuryWorkshop/bare-transport), and
 [uBlock core](https://github.com/gorhill/ubo-core).
 
 ## Classic HTTP(S) compatibility boundary
@@ -391,7 +405,7 @@ build, not the application build.
 
 ## Supabase WebSocket relay setup
 
-This optional setup is for **Classic only**. Scramjet uses Wisp instead.
+This optional setup is for **Classic only**. Scramjet uses Bare or Wisp instead.
 The Classic HTTP(S) proxy remains on Vercel. The optional `ws-relay` Edge Function
 provides a separate WSS relay for sites requiring WebSockets. It verifies
 Supabase Auth sessions, checks the browser app's exact origin, restricts

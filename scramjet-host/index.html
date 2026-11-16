@@ -13,10 +13,18 @@
       header { padding: .8rem 1rem; background: #181825; border-bottom: 1px solid #45475a; }
       form { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
       input { flex: 1; min-width: 10rem; }
-      input, button { padding: .65rem; border: 1px solid #585b70; border-radius: .5rem; font: inherit; background: #313244; color: inherit; }
+      input, button, select { padding: .65rem; border: 1px solid #585b70; border-radius: .5rem; font: inherit; background: #313244; color: inherit; }
       button { cursor: pointer; }
       a { color: #b4befe; }
       header p { margin: .6rem 0 0; font-size: .85rem; }
+      .tabbar { display: flex; gap: .4rem; margin-bottom: .6rem; }
+      #tabs { display: flex; gap: .4rem; overflow-x: auto; min-width: 0; }
+      .tab { display: flex; flex: 0 0 auto; border: 1px solid #585b70; border-radius: .5rem; overflow: hidden; }
+      .tab button { border: 0; border-radius: 0; padding: .5rem; }
+      .tab [role="tab"] { display: flex; align-items: center; gap: .4rem; max-width: 12rem; }
+      .tab [role="tab"][aria-selected="true"] { background: #45475a; box-shadow: inset 0 -2px #b4befe; }
+      .tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tab img { width: 16px; height: 16px; }
       #status { margin: 0; padding: .7rem 1rem; overflow-wrap: anywhere; }
       iframe { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: white; }
       [hidden] { display: none !important; }
@@ -26,13 +34,15 @@
   </head>
   <body>
     <header id="standalone" hidden>
+      <div class="tabbar"><div id="tabs" role="tablist" aria-label="Scramjet tabs"></div><button id="new-tab" type="button" aria-label="New tab">+</button></div>
       <form id="navigation">
         <strong>Scramjet</strong>
         <input id="address" aria-label="Website URL" placeholder="http://info.cern.ch/" spellcheck="false" autocomplete="off" required>
         <button type="submit">Go</button>
         <button id="reload" type="button">Reload</button>
+        <select id="transport" aria-label="Transport"><option value="bare">Bare</option><option value="wisp">Wisp</option></select>
       </form>
-      <p>Websites load through Wisp. This Cloudflare Worker cannot reach sites hosted on Cloudflare. <a href="https://ultraviolet-ubg.vercel.app/" target="_blank" rel="noopener noreferrer">Open Bromine</a></p>
+      <p>Bare uses Worker HTTP fetch; Wisp uses raw TCP and its Cloudflare Worker cannot reach Cloudflare IPs. Sites may still require first-party verification. <a href="https://ultraviolet-ubg.vercel.app/" target="_blank" rel="noopener noreferrer">Open Bromine</a></p>
     </header>
     <p id="status" role="status">This isolated Scramjet frontend is opened by Bromine. Configure its allowed app origins before use. <a href="https://github.com/faultyaccount2/Ultraviolet-ubg" rel="noopener noreferrer" target="_blank">Source code</a> &middot; <a href="/LICENSE.txt">AGPL-3.0</a></p>
     <iframe id="site" title="Scramjet website" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads" referrerpolicy="no-referrer" hidden></iframe>

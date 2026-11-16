@@ -1,21 +1,31 @@
-import { validateScramjetOrigin, validateWispUrl } from "../scramjet-host/config.js";
+import { DEFAULT_BARE_URL, validateScramjetOrigin, validateTransport } from "../scramjet-host/config.js";
 
 const bridges = new Set();
 let control;
 
 export function scramjetConfig(settings, { network = true } = {}) {
   const runtime = window.BROMINE_CONFIG || {};
-  return {
+  const config = {
     origin: validateScramjetOrigin(settings.scramjetOrigin || runtime.scramjetOrigin, location.origin),
-    wispUrl: network ? validateWispUrl(settings.wispUrl || runtime.wispUrl) : settings.wispUrl || runtime.wispUrl || "",
+    wispUrl: settings.wispUrl || runtime.wispUrl || "",
+    bareUrl: settings.bareUrl || runtime.bareUrl || DEFAULT_BARE_URL,
+    transport: settings.transport || "bare",
     limitMB: settings.cacheLimit,
     adblock: settings.adblock,
     logging: settings.logging,
   };
+  if (network) validateTransport(config);
+  return config;
 }
 
 export function connectScramjet(frame, config, onEvent = () => {}) {
-  const origin = validateScramjetOrigin(config.origin, location.origin);
+  validateScramjetOrigin(config.origin, location.origin);
+  return connectScramjetHost(frame, config, onEvent);
+}
+
+// The standalone frontend also embeds hosts on its own already-isolated origin.
+export function connectScramjetHost(frame, config, onEvent = () => {}) {
+  const origin = config.origin;
   const pending = new Map();
   let port;
   let nextId = 0;
@@ -69,7 +79,7 @@ export function connectScramjet(frame, config, onEvent = () => {}) {
         };
         const timer = setTimeout(() => {
           port.postMessage({ action: "cancel", id });
-          finish(new Error("Scramjet did not finish the request. Check the Wisp server and try again."));
+          finish(new Error("Scramjet did not finish the request. Check the selected transport server and try again."));
         }, 45000);
         pending.set(id, { finish });
         signal?.addEventListener("abort", abort, { once: true });
@@ -98,6 +108,8 @@ export function connectScramjet(frame, config, onEvent = () => {}) {
 
 export function scramjetControl(config, onEvent) {
   if (control?.bridge.config.origin === config.origin &&
+      control.bridge.config.transport === config.transport &&
+      control.bridge.config.bareUrl === config.bareUrl &&
       control.bridge.config.wispUrl === config.wispUrl &&
       control.bridge.config.adblock === config.adblock) return control.bridge;
   if (control) { control.bridge.close(); control.frame.remove(); }
@@ -114,6 +126,7 @@ export function scramjetControl(config, onEvent) {
 
 export async function scramjetDownload(config, url, options) {
   const active = [...bridges].find((bridge) => bridge !== control?.bridge && bridge.config.origin === config.origin &&
+    bridge.config.transport === config.transport && bridge.config.bareUrl === config.bareUrl &&
     bridge.config.wispUrl === config.wispUrl && bridge.config.adblock === config.adblock);
   const bridge = active || scramjetControl(config);
   const result = await bridge.command("download", { config, url, headers: [...options.headers] }, { signal: options.signal });

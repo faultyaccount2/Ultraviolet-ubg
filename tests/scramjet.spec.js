@@ -6,6 +6,9 @@ const target = "http://fixture.example/";
 
 async function openScramjet(page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Scramjet transport", { exact: true }).selectOption("wisp");
+  await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page.locator("#route-button")).toHaveText("Scramjet");
   await page.getByRole("textbox", { name: "Search or enter a URL", exact: true }).fill(target);
   await page.getByRole("textbox", { name: "Search or enter a URL", exact: true }).press("Enter");
@@ -15,6 +18,40 @@ async function openScramjet(page) {
   await expect(frame.locator("#api")).toContainText("API loaded");
   return { host, frame };
 }
+
+test("configured Bare is default, loads modules and APIs, and remains switchable to Wisp", async ({ page }) => {
+  test.skip(production, "Uses local Bare and Wisp protocol fixtures.");
+  await page.route("**/runtime-config.js", (route) => route.fulfill({
+    contentType: "text/javascript",
+    body: `window.BROMINE_CONFIG=${JSON.stringify({
+      scramjetOrigin: "http://127.0.0.1:4174",
+      bareUrl: "http://127.0.0.1:4176/bare/",
+      wispUrl: "ws://127.0.0.1:4175/wisp/",
+    })};`,
+  }));
+  const calls = [];
+  page.on("request", (request) => { if (request.url().includes(":4176/bare/v3/")) calls.push(request.url()); });
+  await page.goto("/");
+  await page.locator("#address").fill("https://bare-fixture.org/");
+  await page.locator("#address").press("Enter");
+  const frame = page.frameLocator(".tab-page:not([hidden]) > iframe").frameLocator("#site");
+  await expect(frame.getByRole("heading", { name: "Bare fixture", exact: true })).toBeVisible();
+  await expect(frame.locator("#module")).toHaveText("Bare module executed");
+  await expect(frame.locator("#api")).toHaveText("Bare API loaded: cookies received");
+  expect(calls.length).toBeGreaterThanOrEqual(3);
+  await frame.getByRole("link", { name: "Next Bare page" }).click();
+  await expect(frame.getByRole("heading", { name: "Next Bare page" })).toBeVisible();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Scramjet transport", { exact: true }).selectOption("wisp");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.locator("#address").fill(target);
+  await page.locator("#address").press("Enter");
+  await expect(frame.getByRole("heading", { name: "Scramjet fixture", exact: true })).toBeVisible();
+  await expect(frame.locator("#api")).toContainText("API loaded");
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByLabel("Scramjet transport", { exact: true })).toHaveValue("wisp");
+});
 
 test("Scramjet is primary and its actual rewriter loads scripts, modules, APIs and navigation over Wisp", async ({ page }) => {
   test.skip(production, "Uses a loopback-only Wisp protocol fixture.");
@@ -165,9 +202,11 @@ test("Scramjet preserves POST form bodies and routes website download links thro
 test("the standalone Scramjet proxy browses, reloads and downloads without Bromine", async ({ page }) => {
   test.skip(production, "Uses the loopback Scramjet host and Wisp fixture.");
   await page.goto("http://127.0.0.1:4174/");
+  await expect(page.getByLabel("Transport", { exact: true })).toHaveValue("bare");
+  await page.getByLabel("Transport", { exact: true }).selectOption("wisp");
   await page.getByRole("textbox", { name: "Website URL", exact: true }).fill(target);
   await page.getByRole("button", { name: "Go", exact: true }).click();
-  const frame = page.frameLocator("#site");
+  const frame = page.frameLocator(".standalone-frame:not([hidden])").frameLocator("#site");
   await expect(frame.locator("#script")).toHaveText("Script executed");
   await expect(frame.locator("#module")).toHaveText("Module executed");
   await expect(frame.locator("#api")).toContainText("API loaded");
@@ -184,6 +223,47 @@ test("the standalone Scramjet proxy browses, reloads and downloads without Bromi
   expect(new URL(page.url()).origin).toBe("http://127.0.0.1:4174");
 });
 
+test("standalone Scramjet tabs preserve pages, open site links in-app, switch and close", async ({ page }) => {
+  test.skip(production, "Uses the loopback Scramjet host and Wisp fixture.");
+  await page.goto("http://127.0.0.1:4174/");
+  await expect(page.getByLabel("Transport", { exact: true })).toHaveValue("bare");
+  await page.getByLabel("Transport", { exact: true }).selectOption("wisp");
+  await page.locator("#address").fill(target);
+  await page.getByRole("button", { name: "Go", exact: true }).click();
+  const frame = page.frameLocator(".standalone-frame:not([hidden])").frameLocator("#site");
+  await expect(frame.locator("#api")).toContainText("API loaded");
+  await frame.locator("#script").evaluate((element) => { element.textContent = "Preserved tab"; });
+  await expect(page.getByRole("tab").locator("img")).toBeVisible();
+  await page.getByRole("button", { name: "New tab", exact: true }).click();
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await page.locator("#address").fill(`${target}next`);
+  await page.getByRole("button", { name: "Go", exact: true }).click();
+  await expect(frame.getByRole("heading", { name: "Next Scramjet fixture", exact: true })).toBeVisible();
+  await page.getByRole("tab").first().click();
+  await expect(page.locator("#address")).toHaveValue(target);
+  await expect(frame.locator("#script")).toHaveText("Preserved tab");
+  await frame.locator("body").evaluate((body) => {
+    const link = body.ownerDocument.createElement("a");
+    link.href = "/next";
+    link.target = "_blank";
+    link.textContent = "Open another tab";
+    body.append(link);
+  });
+  await frame.getByRole("link", { name: "Open another tab" }).click();
+  await expect(page.getByRole("tab")).toHaveCount(3);
+  await expect(frame.getByRole("heading", { name: "Next Scramjet fixture", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close Scramjet tab", exact: true }).last().click();
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(page.getByRole("tab").last()).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Close Scramjet tab", exact: true }).first().click();
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect(frame.getByRole("heading", { name: "Next Scramjet fixture", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close Scramjet tab", exact: true }).click();
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect(page.locator("#address")).toHaveValue("");
+  await expect(page).toHaveTitle("Bromine Scramjet");
+});
+
 test("cross-host script and HTTP redirects stay inside embedded and standalone Scramjet", async ({ page }) => {
   test.skip(production, "Uses deterministic non-Cloudflare redirect fixtures.");
   await openScramjet(page);
@@ -193,8 +273,11 @@ test("cross-host script and HTTP redirects stay inside embedded and standalone S
   await expect(frame.locator("#api")).toContainText("API loaded");
   await expect(page.locator("#address")).toHaveValue("http://other.example/");
   expect(new URL(page.url()).origin).toBe("http://127.0.0.1:4173");
-  await page.goto(`http://127.0.0.1:4174/#url=${encodeURIComponent(`${target}script-redirect`)}`);
-  frame = page.frameLocator("#site");
+  await page.goto("http://127.0.0.1:4174/");
+  await page.getByLabel("Transport", { exact: true }).selectOption("wisp");
+  await page.locator("#address").fill(`${target}script-redirect`);
+  await page.getByRole("button", { name: "Go", exact: true }).click();
+  frame = page.frameLocator(".standalone-frame:not([hidden])").frameLocator("#site");
   await expect(frame.locator("#api")).toContainText("API loaded");
   await expect(page.locator("#address")).toHaveValue("http://other.example/");
   expect(new URL(page.url()).origin).toBe("http://127.0.0.1:4174");

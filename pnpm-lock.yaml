@@ -84,6 +84,9 @@ importers:
       '@gorhill/ubo-core':
         specifier: 0.1.30
         version: 0.1.30
+      '@mercuryworkshop/bare-transport':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@mercuryworkshop/libcurl-transport':
         specifier: 2.0.6
         version: 2.0.6
@@ -330,6 +333,9 @@ packages:
   '@isaacs/cliui@8.0.2':
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
     engines: {node: '>=12'}
+
+  '@mercuryworkshop/bare-transport@1.0.0':
+    resolution: {integrity: sha512-Ij/54cpojl0rtr1Hcc4hdM9blhJk6xN/kWmvi46xuQa4pwRXIv8xa+ViVi0AIBg6q7KRKzz4PbsSaLZBJUD8dQ==}
 
   '@mercuryworkshop/libcurl-transport@2.0.6':
     resolution: {integrity: sha512-QBCFBiTfNd9k3wXsW3/thfMJJrKrfaZFKYRncGv6gGU+bfMWdyy7rOktJ9WG6sElKpYbrqRSm+XVAz7I5OCsKg==}
@@ -1182,6 +1188,10 @@ snapshots:
       strip-ansi-cjs: strip-ansi@6.0.1
       wrap-ansi: 8.1.0
       wrap-ansi-cjs: wrap-ansi@7.0.0
+
+  '@mercuryworkshop/bare-transport@1.0.0':
+    dependencies:
+      '@mercuryworkshop/proxy-transports': 1.0.2
 
   '@mercuryworkshop/libcurl-transport@2.0.6':
     dependencies:

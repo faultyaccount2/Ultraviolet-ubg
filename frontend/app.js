@@ -8,7 +8,7 @@ import { connectWebSocket } from "./relay.js";
 import { cookieDomainMatches, decodeSiteCookie, encodeCookieState, encodeSiteCookie } from "../shared/cookie-jar.js";
 import { storageSeedPrefix, validStorageEntries } from "../shared/site-storage.js";
 import { connectScramjet, scramjetConfig, scramjetControl, scramjetDownload } from "./scramjet.js";
-import { validateScramjetOrigin, validateWispUrl } from "../scramjet-host/config.js";
+import { validateScramjetOrigin, validateBareUrl, validateWispUrl } from "../scramjet-host/config.js";
 
 const $ = (selector) => document.querySelector(selector);
 const tabs = [];
@@ -63,7 +63,7 @@ const colorLabels = {
 const hexColor = /^#[a-f\d]{6}$/i;
 const defaults = {
   theme: "mocha", engine: "duckduckgo", adblock: true, mode: "proxy",
-  proxyEngine: "scramjet", scramjetOrigin: "", wispUrl: "",
+  proxyEngine: "scramjet", scramjetOrigin: "", wispUrl: "", bareUrl: "", transport: "bare",
   proxyDomains: [], restore: true, homepage: "", bookmarksBar: false, statusBar: true,
   accent: "", colors: {}, opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
   textSize: 14, logging: true, cacheEnabled: true, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",
@@ -72,7 +72,8 @@ const settings = { ...defaults, ...readStore("bromine:settings", defaults,
   (value) => value && themes.includes(value.theme) && (Object.hasOwn(engines, value.engine) || value.engine === "bing") && typeof value.adblock === "boolean" &&
     (value.mode === undefined || ["automatic", "direct", "proxy"].includes(value.mode)) &&
     (value.proxyEngine === undefined || ["scramjet", "classic"].includes(value.proxyEngine)) &&
-    ["scramjetOrigin", "wispUrl"].every((key) => value[key] === undefined || typeof value[key] === "string") &&
+    ["scramjetOrigin", "wispUrl", "bareUrl"].every((key) => value[key] === undefined || typeof value[key] === "string") &&
+    (value.transport === undefined || ["", "bare", "wisp"].includes(value.transport)) &&
     (value.restore === undefined || typeof value.restore === "boolean") &&
     (value.proxyDomains === undefined || Array.isArray(value.proxyDomains) && value.proxyDomains.every((rule) => typeof rule === "string")) &&
     (value.accent === undefined || value.accent === "" || /^#[a-f\d]{6}$/i.test(value.accent)) &&
@@ -198,6 +199,8 @@ $("#download-concurrent").value = String(settings.concurrent);
 $("#proxy-engine").value = settings.proxyEngine;
 $("#scramjet-origin").value = settings.scramjetOrigin || window.BROMINE_CONFIG?.scramjetOrigin || "";
 $("#wisp-url").value = settings.wispUrl || window.BROMINE_CONFIG?.wispUrl || "";
+$("#bare-url").value = settings.bareUrl || window.BROMINE_CONFIG?.bareUrl || "";
+$("#scramjet-transport").value = settings.transport || "bare";
 
 function routeFor(url) {
   return routeRequest(url, { mode: settings.mode, sites, defaultRoute: "proxy", rules: { forceProxy: settings.proxyDomains } });
@@ -793,9 +796,15 @@ $("#proxy-engine").addEventListener("change", (event) => {
   if (!entry(current()).url) updateToolbar();
   notice("Proxy engine updated. Reload open pages to apply it; login storage is separate for each engine.");
 });
+$("#scramjet-transport").addEventListener("change", (event) => {
+  settings.transport = event.target.value;
+  writeStore("bromine:settings", settings);
+  notice("Transport updated. Reload open pages to apply it.");
+});
 for (const [id, key, validate] of [
   ["scramjet-origin", "scramjetOrigin", (value) => validateScramjetOrigin(value, location.origin)],
   ["wisp-url", "wispUrl", validateWispUrl],
+  ["bare-url", "bareUrl", validateBareUrl],
 ]) {
   $(`#${id}`).addEventListener("change", (event) => {
     try {

@@ -1,0 +1,9 @@
+name = "bromine-bare"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+BARE_ALLOWED_ORIGINS = "https://scramjet-ubg.vercel.app"
+# Optional: comma-separated hosts, e.g. "example.com,*.example.net".
+# BARE_BLOCKED_HOSTS = ""

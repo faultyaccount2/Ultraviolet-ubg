@@ -1,8 +1,9 @@
 import { Controller, ManagedPlugin } from "@mercuryworkshop/scramjet-controller";
 import { ScramjetHeaders } from "@mercuryworkshop/scramjet";
 import LibcurlClient from "@mercuryworkshop/libcurl-transport";
+import BareClient from "@mercuryworkshop/bare-transport";
 import { validateNavigation, redactUrl } from "../shared/address.js";
-import { validateWispUrl } from "./config.js";
+import { validateTransport } from "./config.js";
 import { publicAssetRequest } from "./cache.js";
 import { isBlocked, loadFiltering } from "./filtering.js";
 
@@ -13,7 +14,10 @@ function httpTarget(value) { return validateNavigation(value).href; }
 function documentKey(value) { const url = new URL(value); url.hash = ""; return url.href; }
 
 export async function createEngine(element, config, cache, emit) {
-  const wispUrl = validateWispUrl(config.wispUrl);
+  const transportName = validateTransport(config);
+  const label = transportName === "bare" ? "Bare" : "Wisp";
+  const lifetime = new AbortController();
+  const sockets = new Set();
   let currentClient;
   let currentUrl;
   let firstDocument = true;
@@ -24,9 +28,9 @@ export async function createEngine(element, config, cache, emit) {
     if (config.logging) emit({ event: "request", url: redactUrl(url), method, type, status: 204, route: "SCRAMJET", size: 0, duration: 0, filter: "BLOCKED" });
     return true;
   };
-  emit({ event: "progress", message: "Preparing Scramjet rewriter and Wisp transport" });
+  emit({ event: "progress", message: `Preparing Scramjet rewriter and ${label} transport` });
   if (config.adblock) await loadFiltering();
-  const transport = new LibcurlClient({ wisp: wispUrl });
+  const transport = transportName === "bare" ? new BareClient(config.bareUrl) : new LibcurlClient({ wisp: config.wispUrl });
   await transport.init();
   const rawRequest = transport.request.bind(transport);
   transport.request = async (url, method, body, rawHeaders, signal) => {
@@ -35,9 +39,13 @@ export async function createEngine(element, config, cache, emit) {
     const type = requestType(headers.get("sec-fetch-dest") || "");
     if (filtered(url.href, method, type)) return { status: 204, statusText: "No Content", headers: [["X-Bromine-Adblock", "blocked"]], body: null };
     const started = performance.now();
-    if (config.logging) emit({ event: "progress", message: `Requesting ${type} through Wisp`, url: url.href });
+    if (config.logging) emit({ event: "progress", message: `Requesting ${type} through ${label}`, url: url.href });
     try {
-      const response = await rawRequest(url, method, body, rawHeaders, signal);
+      const response = await rawRequest(url, method, body, rawHeaders, signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal);
+      if (transportName === "bare") {
+        response.headers = response.headers.flatMap(([name, value]) =>
+          Array.isArray(value) ? value.map((item) => [name, item]) : [[name, value]]);
+      }
       const responseHeaders = new Headers(response.headers);
       if (config.logging) emit({
         event: "request", url: redactUrl(url.href), method, type, status: response.status, route: "SCRAMJET",
@@ -48,17 +56,24 @@ export async function createEngine(element, config, cache, emit) {
     } catch (error) {
       if (signal?.aborted) throw error;
       emit({ event: "request", url: redactUrl(url.href), method, type, status: "FAILED", route: "SCRAMJET", size: null, duration: performance.now() - started, filter: "ALLOWED" });
-      throw new Error("The Wisp request failed. Check the Wisp endpoint, its destination allowlist, and the site's availability.");
+      throw new Error(`The ${label} request failed. Check the ${label} endpoint, its allowed origins/destinations, and the site's availability.`, { cause: error });
     }
   };
   const rawConnect = transport.connect.bind(transport);
-  transport.connect = (url, ...args) => {
+  transport.connect = (url, protocols, headers, onopen, onmessage, onclose, onerror) => {
     const target = new URL(url);
     if (!["ws:", "wss:"].includes(target.protocol)) throw new Error("Only website WebSocket connections are supported.");
     target.protocol = target.protocol === "wss:" ? "https:" : "http:";
     httpTarget(target.href);
     if (filtered(target.href, "GET", "websocket")) throw new Error("The website WebSocket was filtered by uBlock Origin.");
-    return rawConnect(url, ...args);
+    let close;
+    const connection = rawConnect(url, protocols, headers, onopen, onmessage, (...args) => {
+      sockets.delete(close);
+      onclose?.(...args);
+    }, onerror);
+    close = connection[1];
+    sockets.add(close);
+    return [connection[0], (...args) => { sockets.delete(close); close(...args); }];
   };
   const registration = await navigator.serviceWorker.register("/worker.js");
   const worker = await navigator.serviceWorker.ready;
@@ -104,7 +119,7 @@ export async function createEngine(element, config, cache, emit) {
         if (options && !options.hit) cache.put(options, response, response.rawHeaders);
       });
       this.tap(frame.hooks.error.request, ({ rawrequest }) => {
-        emit({ event: "error", message: "A Scramjet request failed. Check Wisp connectivity, allowed hosts, or the Request inspector.", url: currentUrl });
+        emit({ event: "error", message: `A Scramjet request failed. Check ${label} connectivity, allowed hosts, or the Request inspector.`, url: currentUrl });
         if (config.logging) emit({ event: "progress", message: `Failed ${rawrequest.method} request`, url: currentUrl });
       });
       this.tap(frame.hooks.init.post, ({ window: siteWindow, client, isTopLevel }) => {
@@ -214,6 +229,11 @@ export async function createEngine(element, config, cache, emit) {
       if (cookies) requestHeaders.set("Cookie", cookies);
       return transport.request(target, "GET", null, [...requestHeaders], signal);
     },
-    close() { transport.session.close(); },
+    close() {
+      lifetime.abort();
+      for (const close of sockets) close();
+      sockets.clear();
+      if (transportName === "wisp") transport.session.close();
+    },
   };
 }
