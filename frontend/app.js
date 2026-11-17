@@ -361,6 +361,84 @@ moveSettingsGroup(storagePage, "#settings-storage");
 const aboutPage = createSettingsPage("about", "About Bromine", "What this browser can do and where to find project information.");
 for (const paragraph of $("#about-dialog").querySelectorAll(":scope > p")) aboutPage.append(paragraph.cloneNode(true));
 
+const adminPage = createSettingsPage("admin", "Share settings", "Create or import an encrypted setup link for another Bromine profile.");
+adminPage.insertAdjacentHTML("beforeend", `<section class="admin-share-panel"><h4>Generate a setup link</h4><p>Exports appearance, routing, and connection preferences. The link carries encrypted settings; its separate key is required to read them.</p><label class="stack-setting">Admin password<input id="share-admin-password" class="field" type="password" autocomplete="current-password" placeholder="Enter admin password"></label><p class="setting-help">The temporary password is 1password. This is only a local convenience gate in a public client app; it is not an authentication boundary.</p><label class="stack-setting">Wisp URL (optional)<input id="share-wisp-url" class="field" type="url" placeholder="wss://your-server.example/wisp/" spellcheck="false"></label><p class="setting-help">Only include a Wisp server you own or have permission to share. Anyone with the imported settings can use this endpoint.</p><button id="generate-settings-share" class="secondary-button" type="button">Generate encrypted link</button><div id="generated-settings-share" class="share-output" hidden><label class="stack-setting">Encrypted link<input id="share-generated-link" class="field" readonly></label><button class="text-button" type="button" data-copy-share="share-generated-link">Copy link</button><label class="stack-setting">Decryption key — share separately<input id="share-generated-key" class="field" readonly></label><button class="text-button" type="button" data-copy-share="share-generated-key">Copy key</button><p class="setting-help">Send the link and key through different channels. Anyone with both can read and apply the exported settings.</p></div></section><section class="admin-share-panel"><h4>Import a setup link</h4><p>Open a shared link in Bromine, then paste its encrypted hash and the key you received.</p><label class="stack-setting">Encrypted hash<input id="share-import-hash" class="field" autocomplete="off" placeholder="#bromine-settings=…"></label><label class="stack-setting">Decryption key<input id="share-import-key" class="field" autocomplete="off" spellcheck="false" placeholder="Paste the separate key"></label><button id="import-settings-share" class="secondary-button" type="button">Decrypt and apply</button><p class="setting-help">This replaces this browser’s shared settings, then reloads Bromine so each app uses them. History, cookies, tabs, and saved site data are not included.</p></section><section class="admin-share-panel"><h4>Setup steps</h4><ol><li>Enter the admin password and optionally add your own Wisp URL.</li><li>Generate a link, then copy the link and key separately.</li><li>Your friend opens the link, enters the key under Settings → Admin, and applies it.</li><li>For Wisp, share the endpoint only with people you authorize. Existing local Wisp settings are not erased when making a new link.</li></ol><p class="setting-help">AES-256-GCM encryption runs in this browser. The hash is limited to 512 characters; unusually large custom settings may not fit.</p></section>`);
+
+const encodeBase64Url = (bytes) => btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+const decodeBase64Url = (value) => Uint8Array.from(atob(value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - value.length % 4) % 4)), (char) => char.charCodeAt(0));
+async function transformBytes(bytes, mode) {
+  const Constructor = mode === "compress" ? window.CompressionStream : window.DecompressionStream;
+  if (!Constructor) throw new Error("This browser does not support compressed settings links. Please use an up-to-date browser.");
+  const stream = new Blob([bytes]).stream().pipeThrough(new Constructor("deflate"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+const sharePrefix = "bromine-settings=v1.";
+const linkHash = () => location.hash.startsWith(`#${sharePrefix}`) ? location.hash.slice(1) : "";
+$("#share-wisp-url").value = settings.wispUrl || "";
+$("#share-import-hash").value = linkHash();
+adminPage.addEventListener("click", async (event) => {
+  const copyButton = event.target.closest("[data-copy-share]");
+  if (!copyButton) return;
+  const field = document.getElementById(copyButton.dataset.copyShare);
+  try { await navigator.clipboard.writeText(field.value); notice("Copied to clipboard."); }
+  catch { field.select(); notice("Clipboard unavailable. The value is selected for manual copy."); }
+});
+$("#generate-settings-share").addEventListener("click", async () => {
+  try {
+    if ($("#share-admin-password").value !== "1password") throw new Error("Admin password is incorrect.");
+    const wisp = $("#share-wisp-url").value.trim();
+    if (wisp) validateWispUrl(wisp);
+    const payload = { ...settings, wispUrl: wisp, version: 1 };
+    const bytes = await transformBytes(new TextEncoder().encode(JSON.stringify(payload)), "compress");
+    const keyBytes = crypto.getRandomValues(new Uint8Array(32));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["encrypt"]);
+    const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, bytes));
+    const hash = `${sharePrefix}${encodeBase64Url(new Uint8Array([...iv, ...ciphertext]))}`;
+    if (hash.length + 1 > 512) throw new Error(`Encrypted settings hash is ${hash.length + 1} characters; the maximum is 512. Reduce custom settings and try again.`);
+    $("#share-generated-link").value = `${location.origin}/#${hash}`;
+    $("#share-generated-key").value = encodeBase64Url(keyBytes);
+    $("#generated-settings-share").hidden = false;
+    notice("Encrypted setup link created. Share the key separately.");
+  } catch (error) { notice(error.message || "Could not encrypt the settings."); }
+});
+$("#import-settings-share").addEventListener("click", async () => {
+  try {
+    const rawHash = $("#share-import-hash").value.trim().replace(/^#/, "");
+    if (rawHash.length > 512) throw new Error("The encrypted hash exceeds the 512-character limit.");
+    if (!rawHash.startsWith(sharePrefix)) throw new Error("This is not a Bromine settings hash.");
+    const packed = decodeBase64Url(rawHash.slice(sharePrefix.length));
+    if (packed.length < 29) throw new Error("The encrypted hash is incomplete.");
+    const keyBytes = decodeBase64Url($("#share-import-key").value.trim());
+    if (keyBytes.length !== 32) throw new Error("The decryption key must be 43 base64url characters.");
+    const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["decrypt"]);
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: packed.slice(0, 12) }, key, packed.slice(12));
+    const decoded = JSON.parse(new TextDecoder().decode(await transformBytes(new Uint8Array(plain), "decompress")));
+    if (decoded.version !== 1) throw new Error("Unsupported settings package version.");
+    const next = { ...defaults };
+    for (const [name, fallback] of Object.entries(defaults)) if (Object.hasOwn(decoded, name)) next[name] = decoded[name];
+    const valid = themes.includes(next.theme) && Object.hasOwn(engines, next.engine) && typeof next.adblock === "boolean" &&
+      ["automatic", "direct", "proxy"].includes(next.mode) && ["scramjet", "classic"].includes(next.proxyEngine) &&
+      ["", "bare", "wisp"].includes(next.transport) && ["rainy", "slate", "dusk"].includes(next.wallpaper) &&
+      ["scramjetOrigin", "bareUrl", "wispUrl"].every((name) => typeof next[name] === "string") &&
+      Array.isArray(next.proxyDomains) && next.proxyDomains.every((rule) => typeof rule === "string") &&
+      typeof next.restore === "boolean" && typeof next.rain === "boolean" && typeof next.bookmarksBar === "boolean" && typeof next.statusBar === "boolean" &&
+      ["opacity", "blur", "saturation", "radius", "textSize", "cacheLimit", "concurrent"].every((name) => Number.isFinite(next[name])) &&
+      next.colors && typeof next.colors === "object" && !Array.isArray(next.colors) &&
+      (!next.scramjetOrigin || Boolean(validateScramjetOrigin(next.scramjetOrigin))) && (!next.bareUrl || Boolean(validateBareUrl(next.bareUrl))) &&
+      (!next.wispUrl || Boolean(validateWispUrl(next.wispUrl))) && Object.entries(next.colors).every(([name, color]) => Object.hasOwn(colorLabels, name) && hexColor.test(color));
+    if (!valid) throw new Error("The decrypted settings contain invalid values.");
+    localStorage.setItem("bromine:settings", JSON.stringify(next));
+    history.replaceState(null, "", `${location.pathname}${location.search}`);
+    notice("Settings imported. Reloading the desktop…");
+    setTimeout(() => location.reload(), 500);
+  } catch (error) { notice(error.name === "OperationError" ? "Decryption failed. Check that the key matches the hash." : error.message || "Could not import the settings."); }
+});
+window.addEventListener("message", (event) => {
+  if (event.origin !== location.origin || event.data?.type !== "bromine:settings-share-import") return;
+  $("#share-import-hash").value = String(event.data.hash || "").replace(/^#/, "");
+  showSettingsPage("admin");
+});
 function showSettingsPage(id) {
   for (const page of settingsPages.querySelectorAll("[data-settings-page]")) page.hidden = page.dataset.settingsPage !== id;
   for (const tab of settingsNav.querySelectorAll("[data-settings-nav]")) {
@@ -385,7 +463,7 @@ settingsNav.querySelectorAll("[data-settings-nav]").forEach((button) => {
     tabs[next].click();
   });
 });
-showSettingsPage("appearance");
+showSettingsPage(linkHash() ? "admin" : "appearance");
 const settingExplanations = {
   "proxy-engine": "Scramjet is the standard engine. The legacy option is tucked below for older profiles and compatibility.",
   "scramjet-origin": "The separate site that runs Scramjet. Keep it on a different domain from Bromine.",
@@ -1479,5 +1557,5 @@ if (session?.tabs.length) {
   }
   selectTab(tabs[Math.max(0, Math.min(session.selected || 0, tabs.length - 1))]);
 } else createTab();
-if (appMode === "settings") requestAnimationFrame(() => $("#settings-dialog").showModal());
+if (appMode === "settings" || linkHash()) requestAnimationFrame(() => $("#settings-dialog").showModal());
 window.bromineCompatibility = compatibility;

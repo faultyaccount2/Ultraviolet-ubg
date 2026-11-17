@@ -10,6 +10,8 @@
   let dragState;
   let resizeState;
   let saveTimer;
+  const settingsShareHash = location.hash.startsWith("#bromine-settings=") ? location.hash.slice(1) : "";
+  if (settingsShareHash) history.replaceState(null, "", `${location.pathname}${location.search}`);
 
   function applyAppearance(value = {}) {
     const theme = ["mocha", "obsidian", "ember", "charcoal", "ocean", "forest", "rose", "contrast", "light", "system"].includes(value.theme) ? value.theme : "mocha";
@@ -285,6 +287,17 @@
     if (event.data?.type === "bromine:desktop-appearance" && event.source === frameFor("settings")?.contentWindow) applyAppearance(event.data.appearance);
     if (event.data?.type === "bromine:settings-close" && event.source === frameFor("settings")?.contentWindow) closeWindow(windowsById.get("settings"));
   });
+  if (settingsShareHash) {
+    const settingsFrame = frameFor("settings");
+    const forwardShare = () => settingsFrame?.contentWindow?.postMessage({ type: "bromine:settings-share-import", hash: settingsShareHash }, location.origin);
+    settingsFrame?.addEventListener("load", forwardShare, { once: true });
+    openWindow("settings");
+    let attempts = 0;
+    const waitForSettingsApp = setInterval(() => {
+      forwardShare();
+      if (++attempts >= 20) clearInterval(waitForSettingsApp);
+    }, 250);
+  }
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeStartMenu();
     if (event.altKey && event.key === "1") openWindow("proxy-1");

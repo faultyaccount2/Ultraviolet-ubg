@@ -66,8 +66,16 @@ off in Settings; it does not load remote wallpaper or tracking assets. Customize
 the desktop with ten palettes, a custom accent, per-surface colors, glass opacity,
 blur, saturation, corner radius, density, text size, three wallpaper treatments,
 and rain motion. Settings has separate Appearance, Colors, Glass, Proxy, Routing,
-Windows, Performance, Wallpaper, Storage and About pages, with plain-English
+Windows, Performance, Wallpaper, Storage, Admin and About pages, with plain-English
 explanations beneath the controls.
+The Admin page can create and import an encrypted settings link. It uses
+AES-256-GCM in the browser, keeps the decryption key separate from the link,
+and limits the hash to 512 characters. Share that key through a different
+channel. The temporary `1password` prompt is only a local convenience gate and
+is visible to anyone inspecting this public client; it must not be treated as
+account security. Settings packages include connection endpoints, so share
+Wisp URLs only with people you authorize. Browser history, cookies, tabs and
+saved site data are not included.
 Open tabs restore on startup by default. Disable **Restore tabs on startup** to
 remove the saved tab session and opt out.
 DuckDuckGo is the default search engine; Google is also available in Settings.
