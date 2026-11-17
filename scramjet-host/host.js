@@ -3,6 +3,7 @@ import { validateTransport } from "./config.js";
 import { PublicAssetCache } from "./cache.js";
 
 const standalone = window === window.top;
+document.documentElement.dataset.scramjetMode = standalone ? "standalone" : "embedded";
 const status = document.querySelector(standalone ? "#status" : "#embed-status");
 const site = document.querySelector("#site");
 const allowedOrigins = window.BROMINE_SCRAMJET_CONFIG?.origins || [];
