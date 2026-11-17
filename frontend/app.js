@@ -388,7 +388,7 @@ $("#generate-settings-share").addEventListener("click", async () => {
     if ($("#share-admin-password").value !== "1password") throw new Error("Admin password is incorrect.");
     const wisp = $("#share-wisp-url").value.trim();
     if (wisp) validateWispUrl(wisp);
-    const payload = [1, ...Object.keys(defaults).map((name) => name === "wispUrl" ? wisp : settings[name])];
+    const payload = [1, ...Object.keys(defaults).map((name) => name === "wispUrl" ? wisp : name === "transport" && wisp ? "wisp" : settings[name])];
     const bytes = await transformBytes(new TextEncoder().encode(JSON.stringify(payload)), "compress");
     const keyBytes = crypto.getRandomValues(new Uint8Array(32));
     const iv = crypto.getRandomValues(new Uint8Array(12));
