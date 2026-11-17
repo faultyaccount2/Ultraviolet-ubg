@@ -38,7 +38,11 @@ export function startStandalone() {
   const byId = (id) => document.getElementById(id);
 
   document.querySelector("#standalone").hidden = false;
-  document.querySelector("#site").remove();
+  const engineFrame = byId("site");
+  if (engineFrame) {
+    engineFrame.classList.add("standalone-engine-frame");
+    byId("browser-view").append(engineFrame);
+  }
   byId("embed-status").hidden = true;
   byId("transport").value = preferences.transport;
   byId("wisp-url").value = preferences.wispUrl;
