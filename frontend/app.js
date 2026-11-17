@@ -388,7 +388,7 @@ $("#generate-settings-share").addEventListener("click", async () => {
     if ($("#share-admin-password").value !== "1password") throw new Error("Admin password is incorrect.");
     const wisp = $("#share-wisp-url").value.trim();
     if (wisp) validateWispUrl(wisp);
-    const payload = { ...settings, wispUrl: wisp, version: 1 };
+    const payload = [1, ...Object.keys(defaults).map((name) => name === "wispUrl" ? wisp : settings[name])];
     const bytes = await transformBytes(new TextEncoder().encode(JSON.stringify(payload)), "compress");
     const keyBytes = crypto.getRandomValues(new Uint8Array(32));
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -414,9 +414,9 @@ $("#import-settings-share").addEventListener("click", async () => {
     const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["decrypt"]);
     const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: packed.slice(0, 12) }, key, packed.slice(12));
     const decoded = JSON.parse(new TextDecoder().decode(await transformBytes(new Uint8Array(plain), "decompress")));
-    if (decoded.version !== 1) throw new Error("Unsupported settings package version.");
+    if (!Array.isArray(decoded) || decoded[0] !== 1 || decoded.length !== Object.keys(defaults).length + 1) throw new Error("Unsupported settings package version.");
     const next = { ...defaults };
-    for (const [name, fallback] of Object.entries(defaults)) if (Object.hasOwn(decoded, name)) next[name] = decoded[name];
+    Object.keys(defaults).forEach((name, index) => { next[name] = decoded[index + 1]; });
     const valid = themes.includes(next.theme) && Object.hasOwn(engines, next.engine) && typeof next.adblock === "boolean" &&
       ["automatic", "direct", "proxy"].includes(next.mode) && ["scramjet", "classic"].includes(next.proxyEngine) &&
       ["", "bare", "wisp"].includes(next.transport) && ["rainy", "slate", "dusk"].includes(next.wallpaper) &&
