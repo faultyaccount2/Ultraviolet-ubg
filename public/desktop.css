@@ -41,3 +41,13 @@ body.desktop-body { position:relative; margin:0; color:#ececea; background:#1113
 @media (max-width:800px) { .desktop-surface { inset:36px 0 65px; }.desktop-window { min-width:290px; min-height:230px; }.taskbar-search { width:112px; }.desktop-menus { display:none; }.desktop-tray { gap:7px; } }
 @media (max-width:620px) { .desktop-surface { inset:36px 0 64px; }.desktop-window { min-width:calc(100vw - 24px); }.taskbar { gap:3px; bottom:5px; min-height:43px; padding:4px 5px; }.taskbar-search { width:min(105px,26vw); }.taskbar-tray { min-width:70px; gap:5px; padding-left:7px; }.desktop-tray .tray-label { display:none; }.desktop-menubar { padding:0 9px; }.window-controls button { width:27px; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; } }
+
+/* Taskbar indicators mirror a desktop task switcher: pinned apps remain visible,
+   while a fine accent marker shows which window is running or in front. */
+.taskbar-app { transition:background 160ms ease,transform 160ms ease; }
+.taskbar-app:hover { transform:translateY(-1px); }
+.taskbar-app.running > i:last-child { width:5px; background:#b7b9b8; }
+.taskbar-app.selected { background:#ffffff13; }
+.taskbar-app.selected .start-app-icon { border-color:#ffffff44; background:#ffffff11; }
+.taskbar-app.selected > i:last-child { width:14px; height:2px; background:var(--accent,#d1d3d3); }
+.taskbar-app:focus-visible { outline:1px solid var(--accent,#d1d3d3); outline-offset:1px; }

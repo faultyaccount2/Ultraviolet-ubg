@@ -6,6 +6,7 @@
   const menu = document.querySelector("#start-menu");
   const startSearch = document.querySelector("#start-search-input");
   let zIndex = 10;
+  let activeWindowId = null;
   let dragState;
   let resizeState;
   let saveTimer;
@@ -40,15 +41,42 @@
   let noticeTimer;
 
   function focusWindow(win) {
-    if (!win || win.hidden) return;
+    if (!win) return;
+    win.hidden = false;
+    activeWindowId = win.dataset.window;
     zIndex += 1;
     win.style.zIndex = String(zIndex);
     windows.forEach((item) => {
       const active = item === win;
+      if (!active) {
+        item.hidden = true;
+        item.classList.remove("is-opening", "is-minimizing", "is-closing");
+      }
       item.classList.toggle("active", active);
-      document.querySelector(`[data-taskbar-window="${item.dataset.window}"]`)?.classList.toggle("selected", active);
+      const taskbarButton = document.querySelector(`[data-taskbar-window="${item.dataset.window}"]`);
+      taskbarButton?.classList.toggle("selected", active);
+      taskbarButton?.setAttribute("aria-current", active ? "page" : "false");
     });
     closeStartMenu();
+  }
+
+  function setWindowRunning(win, running) {
+    const button = document.querySelector(`[data-taskbar-window="${win.dataset.window}"]`);
+    button?.classList.toggle("running", running);
+    button?.setAttribute("data-running", String(running));
+  }
+
+  function fitWindowToSurface(win) {
+    if (win.classList.contains("is-maximized")) return;
+    const bounds = surface.getBoundingClientRect();
+    const minWidth = window.innerWidth <= 620 ? Math.min(bounds.width - 16, 290) : 290;
+    const minHeight = window.innerWidth <= 620 ? 230 : 250;
+    const width = Math.max(minWidth, Math.min(parseFloat(win.style.width) || bounds.width - 36, bounds.width - 16));
+    const height = Math.max(minHeight, Math.min(parseFloat(win.style.height) || bounds.height - 36, bounds.height - 16));
+    win.style.width = `${width}px`;
+    win.style.height = `${height}px`;
+    win.style.left = `${Math.max(0, Math.min(parseFloat(win.style.left) || 0, bounds.width - width))}px`;
+    win.style.top = `${Math.max(0, Math.min(parseFloat(win.style.top) || 0, bounds.height - 42))}px`;
   }
 
   function saveLayout() {
@@ -61,36 +89,39 @@
           width: parseFloat(win.style.width) || 0, height: parseFloat(win.style.height) || 0,
         };
       }
-      try { localStorage.setItem("bromine:desktop:layout", JSON.stringify(layout)); } catch { /* The desktop still works without saved placement. */ }
+      try { localStorage.setItem("bromine:desktop:layout", JSON.stringify({ version: 2, windows: layout })); } catch { /* The desktop still works without saved placement. */ }
     }, 120);
   }
 
   function initialLayout() {
     const bounds = surface.getBoundingClientRect();
     let saved = {};
-    try { saved = JSON.parse(localStorage.getItem("bromine:desktop:layout") || "{}"); } catch { /* Use the split layout. */ }
-    const gap = 12;
-    const margin = 14;
-    const width = Math.max(310, Math.floor((bounds.width - margin * 2 - gap) / 2));
-    const height = Math.max(260, Math.min(bounds.height - margin * 2, Math.round(bounds.height * .93)));
-    for (let index = 0; index < 2; index++) {
-      const win = windowsById.get(index === 0 ? "proxy-1" : "proxy-2");
+    try {
+      const stored = JSON.parse(localStorage.getItem("bromine:desktop:layout") || "{}");
+      if (stored.version === 2 && stored.windows) saved = stored.windows;
+    } catch { /* Use the centered layout. */ }
+    const margin = 18;
+    const width = Math.max(290, Math.min(bounds.width - margin * 2, 1160));
+    const height = Math.max(230, Math.min(bounds.height - margin * 2, 780));
+    for (const id of ["proxy-1", "proxy-2"]) {
+      const win = windowsById.get(id);
       const stored = saved[win.dataset.window];
-      const defaultLeft = margin + index * (width + gap);
-      const left = Number.isFinite(stored?.left) && stored.width > 0 ? stored.left : defaultLeft;
-      const top = Number.isFinite(stored?.top) && stored.height > 0 ? stored.top : margin;
-      const actualWidth = Number.isFinite(stored?.width) && stored.width > 0 ? Math.min(stored.width, bounds.width - 18) : width;
-      const actualHeight = Number.isFinite(stored?.height) && stored.height > 0 ? Math.min(stored.height, bounds.height - 18) : height;
+      const actualWidth = Number.isFinite(stored?.width) && stored.width >= 290 ? Math.min(stored.width, bounds.width - margin * 2) : width;
+      const actualHeight = Number.isFinite(stored?.height) && stored.height >= 230 ? Math.min(stored.height, bounds.height - margin * 2) : height;
+      const left = Number.isFinite(stored?.left) ? stored.left : Math.round((bounds.width - actualWidth) / 2);
+      const top = Number.isFinite(stored?.top) ? stored.top : Math.round((bounds.height - actualHeight) / 2);
       win.style.left = `${Math.max(0, Math.min(left, bounds.width - 100))}px`;
       win.style.top = `${Math.max(0, Math.min(top, bounds.height - 44))}px`;
       win.style.width = `${actualWidth}px`;
       win.style.height = `${actualHeight}px`;
     }
     const settings = windowsById.get("settings");
-    settings.style.width = `${Math.min(760, bounds.width - 32)}px`;
-    settings.style.height = `${Math.min(720, bounds.height - 30)}px`;
-    settings.style.left = `${Math.max(12, Math.round((bounds.width - Math.min(760, bounds.width - 32)) / 2))}px`;
-    settings.style.top = `${Math.max(10, Math.round((bounds.height - Math.min(720, bounds.height - 30)) / 2))}px`;
+    const settingsWidth = Math.min(880, bounds.width - 32);
+    const settingsHeight = Math.min(740, bounds.height - 32);
+    settings.style.width = `${settingsWidth}px`;
+    settings.style.height = `${settingsHeight}px`;
+    settings.style.left = `${Math.max(8, Math.round((bounds.width - settingsWidth) / 2))}px`;
+    settings.style.top = `${Math.max(8, Math.round((bounds.height - settingsHeight) / 2))}px`;
   }
 
   function openWindow(id) {
@@ -98,6 +129,8 @@
     if (!win) return;
     const wasHidden = win.hidden;
     win.hidden = false;
+    fitWindowToSurface(win);
+    setWindowRunning(win, true);
     win.classList.remove("is-closing", "is-minimizing");
     if (wasHidden) {
       win.classList.remove("is-opening");
@@ -108,18 +141,24 @@
   }
 
   function minimizeWindow(win) {
-    if (win.classList.contains("is-maximized")) win.classList.remove("is-maximized");
+    if (activeWindowId === win.dataset.window) activeWindowId = null;
+    win.classList.remove("active");
+    const button = document.querySelector(`[data-taskbar-window="${win.dataset.window}"]`);
+    button?.classList.remove("selected");
+    button?.setAttribute("aria-current", "false");
     win.classList.add("is-minimizing");
     setTimeout(() => { win.hidden = true; win.classList.remove("is-minimizing"); }, 170);
-    const next = windows.find((item) => item !== win && !item.hidden);
-    if (next) focusWindow(next);
   }
 
   function closeWindow(win) {
+    if (activeWindowId === win.dataset.window) activeWindowId = null;
+    win.classList.remove("active");
+    const button = document.querySelector(`[data-taskbar-window="${win.dataset.window}"]`);
+    button?.classList.remove("selected");
+    button?.setAttribute("aria-current", "false");
+    setWindowRunning(win, false);
     win.classList.add("is-closing");
     setTimeout(() => { win.hidden = true; win.classList.remove("is-closing"); }, 170);
-    const next = windows.find((item) => item !== win && !item.hidden);
-    if (next) focusWindow(next);
   }
 
   function toggleMaximize(win) {
@@ -143,7 +182,12 @@
   }
 
   document.querySelectorAll("[data-start-toggle]").forEach((button) => button.addEventListener("click", toggleStartMenu));
-  document.querySelectorAll("[data-open-window]").forEach((button) => button.addEventListener("click", () => openWindow(button.dataset.openWindow)));
+  document.querySelectorAll("[data-open-window]:not(.taskbar-app)").forEach((button) => button.addEventListener("click", () => openWindow(button.dataset.openWindow)));
+  document.querySelectorAll(".taskbar-app").forEach((button) => button.addEventListener("click", () => {
+    const win = windowsById.get(button.dataset.openWindow);
+    if (win && !win.hidden && win.classList.contains("active")) minimizeWindow(win);
+    else openWindow(button.dataset.openWindow);
+  }));
   document.querySelectorAll(".desktop-window").forEach((win) => {
     win.addEventListener("pointerdown", () => focusWindow(win));
     win.querySelector("iframe")?.addEventListener("focus", () => focusWindow(win));
@@ -231,7 +275,7 @@
       if (event.key === "Enter" && field.value.trim()) {
         event.preventDefault();
         const value = field.value.trim();
-        const match = [...document.querySelectorAll(".pinned-apps button")].find((button) => button.textContent.trim().toLowerCase() === value.toLowerCase());
+        const match = [...document.querySelectorAll(".pinned-apps button")].find((button) => (button.dataset.appLabel || button.textContent).trim().toLowerCase() === value.toLowerCase());
         if (match) openWindow(match.dataset.openWindow); else navigateProxy(value);
         field.value = "";
         startSearch.value = "";
@@ -265,7 +309,7 @@
   window.addEventListener("resize", () => {
     const bounds = surface.getBoundingClientRect();
     for (const win of windows) {
-      if (win.classList.contains("is-maximized")) continue;
+      if (win.hidden || win.classList.contains("is-maximized")) continue;
       win.style.left = `${Math.max(0, Math.min(win.offsetLeft, bounds.width - 100))}px`;
       win.style.top = `${Math.max(0, Math.min(win.offsetTop, bounds.height - 42))}px`;
       win.style.width = `${Math.min(win.offsetWidth, bounds.width - win.offsetLeft)}px`;

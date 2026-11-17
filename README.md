@@ -6,7 +6,7 @@
 ![Licenses](https://img.shields.io/badge/licenses-multiple-68727e?style=flat-square)
 
 Bromine is an experimental, self-hostable browsing desktop with two independent
-proxy windows, a floating taskbar and a movable Settings app. Scramjet is the
+proxy windows, a Windows-style taskbar and a movable Settings app. Scramjet is the
 standard proxy engine. Website traffic uses either the public Bare HTTP endpoint
 or a Wisp server that each user configures in their own browser profile. The
 desktop and both proxy windows run from one site and one origin. Proxy windows
@@ -54,12 +54,13 @@ Scramjet/libcurl runtime connected to a loopback-only Wisp protocol fixture.
 The isolated test frontend uses port 4174; the fixture Wisp endpoint uses 4175.
 These fixtures are **not** production servers and must not be deployed.
 
-The desktop starts with two side-by-side proxy windows. Each can be dragged,
-resized, minimized, maximized, closed and restored from the taskbar. Each
-window has independent tabs, history and site storage while sharing the chosen
-appearance and connection preferences. The windows run the same browser app
-and stay in the desktop. Settings opens as another movable window. A translucent Start menu
-and taskbar provide app search, window switching and a local clock. The desktop
+The desktop shows one app window at a time. Proxy and Proxy 2 each keep their
+own tabs, history and site storage while sharing appearance and connection
+preferences. Switch between them or Settings with the taskbar; the previous
+window stays loaded in the background so its state is preserved. The active
+window can be dragged, resized, minimized, maximized or closed. Clicking its
+taskbar icon minimizes or restores it. A translucent Start menu and taskbar
+provide app search, window switching and a local clock. The desktop
 glass sits over a locally rendered rain ambience that can be changed or turned
 off in Settings; it does not load remote wallpaper or tracking assets. Customize
 the desktop with ten palettes, a custom accent, per-surface colors, glass opacity,

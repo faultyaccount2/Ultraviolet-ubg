@@ -34,7 +34,7 @@
         <div class="window-content"><iframe class="proxy-frame" src="/browser.html?embedded=1&amp;instance=proxy-1" title="Proxy browser"></iframe></div>
         <div class="resize-handle n" data-resize="n"></div><div class="resize-handle e" data-resize="e"></div><div class="resize-handle s" data-resize="s"></div><div class="resize-handle w" data-resize="w"></div><div class="resize-handle ne" data-resize="ne"></div><div class="resize-handle nw" data-resize="nw"></div><div class="resize-handle se" data-resize="se"></div><div class="resize-handle sw" data-resize="sw"></div>
       </section>
-      <section class="desktop-window" id="window-proxy-2" data-window="proxy-2" aria-label="Proxy 2 window">
+      <section class="desktop-window" id="window-proxy-2" data-window="proxy-2" aria-label="Proxy 2 window" hidden>
         <header class="window-titlebar" data-drag-handle>
           <span class="window-app-icon proxy-two-icon"><i></i><i></i><i></i></span><span class="window-title">Proxy 2</span>
           <div class="window-controls"><button type="button" data-window-action="minimize" aria-label="Minimize Proxy 2" title="Minimize"><i class="minimize-glyph"></i></button><button type="button" data-window-action="maximize" aria-label="Maximize Proxy 2" title="Maximize or restore"><i class="maximize-glyph"></i></button><button type="button" class="close-control" data-window-action="close" aria-label="Close Proxy 2" title="Close">×</button></div>
@@ -67,9 +67,9 @@
       <button class="taskbar-start" type="button" data-start-toggle aria-label="Start"><span class="brand-mark">Br</span></button>
       <label class="taskbar-search"><svg aria-hidden="true"><use href="/icons.svg#search"></use></svg><input id="taskbar-search-input" type="search" placeholder="Search" aria-label="Search apps or browse"></label>
       <div class="taskbar-apps" aria-label="Running applications">
-        <button type="button" class="taskbar-app selected" data-taskbar-window="proxy-1" data-open-window="proxy-1" aria-label="Proxy"><span class="start-app-icon proxy-icon">P</span><i></i></button>
-        <button type="button" class="taskbar-app" data-taskbar-window="proxy-2" data-open-window="proxy-2" aria-label="Proxy 2"><span class="start-app-icon proxy-two-icon"><i></i><i></i><i></i></span><i></i></button>
-        <button type="button" class="taskbar-app" data-taskbar-window="settings" data-open-window="settings" aria-label="Settings"><span class="start-app-icon settings-icon"><svg><use href="/icons.svg#settings"></use></svg></span><i></i></button>
+        <button type="button" class="taskbar-app running selected" data-running="true" data-taskbar-window="proxy-1" data-open-window="proxy-1" aria-label="Proxy" title="Proxy"><span class="start-app-icon proxy-icon">P</span><i></i></button>
+        <button type="button" class="taskbar-app" data-running="false" data-taskbar-window="proxy-2" data-open-window="proxy-2" aria-label="Proxy 2" title="Proxy 2"><span class="start-app-icon proxy-two-icon"><i></i><i></i><i></i></span><i></i></button>
+        <button type="button" class="taskbar-app" data-running="false" data-taskbar-window="settings" data-open-window="settings" aria-label="Settings" title="Settings"><span class="start-app-icon settings-icon"><svg><use href="/icons.svg#settings"></use></svg></span><i></i></button>
       </div>
       <div class="taskbar-tray"><span class="tray-network" aria-label="Network connected"></span><span class="tray-volume" aria-label="Audio"></span><time id="taskbar-clock"></time></div>
     </footer>
