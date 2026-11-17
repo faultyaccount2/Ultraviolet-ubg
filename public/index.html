@@ -14,6 +14,12 @@
   </head>
   <body>
     <a class="skip-link" href="#pages">Skip to content</a>
+    <canvas id="rain-canvas" aria-hidden="true"></canvas>
+    <header class="os-menubar" aria-label="Bromine OS menu bar">
+      <a class="os-brand" href="/" aria-label="Bromine workspace"><span class="os-mark">Br</span><strong>Bromine</strong></a>
+      <nav class="os-menus" aria-label="Workspace menu"><button data-action="home">Workspace</button><button data-action="new-tab">New window</button><button data-action="settings">Settings</button></nav>
+      <div class="os-system"><span class="rain-indicator" aria-label="Rain ambience active"></span><span>Workspace</span><time id="os-clock"></time></div>
+    </header>
     <main class="browser">
       <nav class="tab-bar" aria-label="Browser tabs">
         <div id="tabs" role="tablist" aria-label="Open tabs"></div>
@@ -66,6 +72,17 @@
       <div class="home">
         <div class="wordmark"><span class="element-mark"><small>35</small>Br</span><h1>bromine</h1></div>
         <p class="tagline">A little space to browse.</p>
+        <section class="app-shelf" aria-labelledby="app-shelf-title">
+          <div class="section-kicker"><span id="app-shelf-title">Your applications</span><span>01 / 02</span></div>
+          <div class="app-launchers">
+            <a class="app-launcher is-current" href="https://ultraviolet-ubg.vercel.app/" aria-label="Open Bromine">
+              <span class="app-glyph bromine-glyph">Br</span><span class="app-launcher-copy"><strong>Bromine</strong><small>Everyday browser</small></span><span class="app-launcher-state">CURRENT</span>
+            </a>
+            <a class="app-launcher" href="https://scramjet-ubg.vercel.app/" target="_blank" rel="noopener" aria-label="Open Scramjet in a new tab">
+              <span class="app-glyph scramjet-glyph"><i></i><i></i><i></i></span><span class="app-launcher-copy"><strong>Scramjet</strong><small>Alternate browser</small></span><span class="app-launcher-arrow" aria-hidden="true">↗</span>
+            </a>
+          </div>
+        </section>
         <form class="home-search" role="search">
           <svg aria-hidden="true"><use href="/icons.svg#search"></use></svg>
           <input aria-label="Search the web" placeholder="Search the web or enter a URL" autocomplete="off" spellcheck="false">
@@ -81,16 +98,41 @@
     </template>
     <dialog id="settings-dialog">
       <div class="dialog-heading"><h2>Settings</h2><button class="icon-button" data-close aria-label="Close settings"><svg><use href="/icons.svg#close"></use></svg></button></div>
-      <label class="setting">Theme<select id="theme" aria-label="Theme"><option value="mocha">Mocha</option><option value="charcoal">Charcoal</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="contrast">High Contrast</option><option value="light">Light</option><option value="system">System</option></select></label>
-      <label class="setting">Proxy engine<select id="proxy-engine" aria-label="Proxy engine"><option value="scramjet">Scramjet (main)</option><option value="classic">Classic HTTP proxy</option></select></label>
+      <nav class="settings-nav" aria-label="Settings sections"><button type="button" data-settings-nav="appearance">Appearance</button><button type="button" data-settings-nav="connection">Connection</button><button type="button" data-settings-nav="interface">Interface</button><button type="button" data-settings-nav="privacy">Privacy</button><button type="button" data-settings-nav="storage">Storage</button></nav>
+      <section id="settings-appearance" class="system-styling" aria-labelledby="styling-title">
+        <div class="styling-intro"><div><span class="section-kicker">APPEARANCE / SYSTEM</span><h3 id="styling-title">System Styling</h3><p>Customize the visual treatment of the interface.</p></div><span class="material-tag"><span></span> GLASS MATERIAL</span></div>
+        <div class="theme-grid" role="group" aria-label="Choose a color theme">
+          <button class="theme-card" type="button" data-theme-choice="obsidian" aria-pressed="false">
+            <span class="theme-preview" data-palette="obsidian"><span class="preview-orb"></span><span class="preview-shell"><span class="preview-sidebar"><i></i><i></i><i></i></span><span class="preview-window"><span class="preview-toolbar"><i></i><i></i><b></b></span><span class="preview-content"><i></i><i></i><span><b></b><b></b></span><em></em></span></span></span><span class="theme-check" aria-hidden="true">✓</span></span>
+            <span class="theme-caption"><span><strong>01&nbsp; Obsidian</strong><small>Minimal · premium · quiet</small></span><span class="theme-swatch obsidian-swatch"></span></span>
+          </button>
+          <button class="theme-card" type="button" data-theme-choice="ember" aria-pressed="false">
+            <span class="theme-preview" data-palette="ember"><span class="preview-orb"></span><span class="preview-shell"><span class="preview-sidebar"><i></i><i></i><i></i></span><span class="preview-window"><span class="preview-toolbar"><i></i><i></i><b></b></span><span class="preview-content"><i></i><i></i><span><b></b><b></b></span><em></em></span></span></span><span class="theme-check" aria-hidden="true">✓</span></span>
+            <span class="theme-caption"><span><strong>02&nbsp; Ember</strong><small>Warm · refined · atmospheric</small></span><span class="theme-swatch ember-swatch"></span></span>
+          </button>
+        </div>
+        <div class="more-themes"><span>More palettes</span><div class="palette-chips" role="group" aria-label="More color themes">
+          <button type="button" data-theme-choice="mocha" aria-label="Mocha theme" title="Mocha"><i class="swatch-mocha"></i></button><button type="button" data-theme-choice="charcoal" aria-label="Charcoal theme" title="Charcoal"><i class="swatch-charcoal"></i></button><button type="button" data-theme-choice="ocean" aria-label="Ocean theme" title="Ocean"><i class="swatch-ocean"></i></button><button type="button" data-theme-choice="forest" aria-label="Forest theme" title="Forest"><i class="swatch-forest"></i></button><button type="button" data-theme-choice="rose" aria-label="Rose theme" title="Rose"><i class="swatch-rose"></i></button><button type="button" data-theme-choice="light" aria-label="Light theme" title="Light"><i class="swatch-light"></i></button><button type="button" data-theme-choice="contrast" aria-label="High contrast theme" title="High contrast"><i class="swatch-contrast"></i></button><button type="button" data-theme-choice="system" aria-label="System theme" title="System"><i class="swatch-system"></i></button>
+        </div></div>
+        <p class="styling-footnote"><span>Appearance changes apply instantly.</span><button type="button" id="reset-theme" class="text-button">Reset to default</button></p>
+      </section>
+      <label class="setting legacy-theme-setting">Theme<select id="theme" aria-label="Theme"><option value="mocha">Mocha</option><option value="obsidian">Obsidian</option><option value="ember">Ember</option><option value="charcoal">Charcoal</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="contrast">High Contrast</option><option value="light">Light</option><option value="system">System</option></select></label>
+      <details class="settings-group" open>
+        <summary id="settings-connection"><span>Connection &amp; routing</span><small>Scramjet, transport and site rules</small></summary>
+      <div class="setting engine-status"><span>Primary engine</span><strong id="engine-status">Scramjet</strong></div>
+      <p class="connection-hint"><strong>Scramjet is the default.</strong> Choose Wisp below only if you have your own Wisp server. Wisp endpoints are saved in this browser and aren’t supplied to new users.</p>
       <label class="stack-setting">Scramjet frontend origin<input id="scramjet-origin" class="field" aria-label="Scramjet frontend origin" type="url" placeholder="https://your-scramjet-project.vercel.app" spellcheck="false"></label>
       <label class="setting">Scramjet transport<select id="scramjet-transport" aria-label="Scramjet transport"><option value="bare">Bare (default)</option><option value="wisp">Wisp (libcurl)</option></select></label>
       <label class="stack-setting">Bare URL<input id="bare-url" class="field" aria-label="Bare URL" type="url" placeholder="https://bromine-bare.e42xec.workers.dev/bare/" spellcheck="false"></label>
-      <label class="stack-setting">Wisp URL<input id="wisp-url" class="field" aria-label="Wisp URL" type="url" placeholder="wss://bromine-wisp.iknowikea.workers.dev/wisp/" spellcheck="false"></label>
-      <p class="muted">Scramjet is the main engine and Bare is the default transport. Configure its separate frontend and Bare URL. Bare uses Worker HTTP fetch and can reach Cloudflare-hosted sites; Wisp is an explicit alternative using libcurl and raw TCP (the Cloudflare Wisp Worker cannot reach Cloudflare IPs). There is no silent fallback. The transport operator can observe traffic; Bare also terminates website TLS. Endpoint URLs are public, not passwords. Classic remains a manual alternative with separate login storage.</p>
+      <label class="stack-setting">Wisp URL<input id="wisp-url" class="field" aria-label="Wisp URL" type="url" placeholder="wss://your-server.example/wisp/" spellcheck="false"></label>
+      <p class="muted">Scramjet sends website requests through the selected transport. Bare uses HTTP fetch; Wisp uses TCP through the server you configure. There is no silent transport fallback. The transport operator can observe connection destinations, and Bare also terminates website TLS. Endpoint URLs are saved only in this browser unless an operator configures a public build default.</p>
+      <details class="advanced-engine"><summary>Legacy engine options</summary><p class="muted">Classic HTTP proxy is kept for compatibility and existing browser profiles. It does not use Scramjet, Bare or Wisp, and keeps site login data separately.</p><label class="setting">Proxy engine<select id="proxy-engine" aria-label="Proxy engine"><option value="scramjet">Scramjet</option><option value="classic">Classic HTTP proxy (legacy)</option></select></label></details>
       <label class="setting">Default routing<select id="routing-mode" aria-label="Default routing"><option value="automatic">Automatic (Proxy by default)</option><option value="proxy">Always Proxy</option><option value="direct">Direct iframe (when permitted)</option></select></label>
       <label class="stack-setting">Proxy-preferred domains<textarea id="proxy-domains" rows="3" placeholder="example.com&#10;*.example.org&#10;=exact.example.net"></textarea></label>
       <p class="muted">Pages stay embedded unless you choose Open directly. Scramjet is the default proxy engine. Direct frames can be denied by a site's framing policy; their failures and navigation cannot be reliably inspected. Authentication, TLS and rate-limit failures are not bypassed.</p>
+      </details>
+      <details class="settings-group">
+        <summary id="settings-interface"><span>Browser interface</span><small>Startup, toolbar and search</small></summary>
       <label class="setting">Tab title<input id="cloak-title" class="field narrow" aria-label="Tab title" placeholder="bromine" maxlength="160"></label>
       <label class="setting">Tab favicon<select id="cloak-icon" aria-label="Tab favicon"><option value="bromine">Bromine</option><option value="neutral">Neutral</option></select></label>
       <p class="muted">The about:blank wrapper and appearance settings only change this app's browser-tab presentation. They do not hide traffic, browser history or activity from network operators.</p>
@@ -98,6 +140,11 @@
       <label class="setting">Restore tabs on startup<input id="restore-tabs" type="checkbox"></label>
       <label class="setting">Show bookmarks bar<input id="show-bookmarks" type="checkbox"></label>
       <label class="setting">Show status bar<input id="show-status" type="checkbox"></label>
+      <label class="setting">Rain window ambience<input id="rain-effect" type="checkbox"></label>
+      <label class="setting">Search engine<select id="search-engine" aria-label="Search engine"><option value="duckduckgo">DuckDuckGo</option><option value="google">Google</option></select></label>
+      </details>
+      <details class="settings-group">
+        <summary id="settings-tuning"><span>Appearance fine tuning</span><small>Custom colors, glass and density</small></summary>
       <h3>Colors</h3>
       <div id="appearance-colors"></div>
       <button id="reset-colors" class="secondary-button">Reset colors to theme</button>
@@ -108,14 +155,20 @@
       <label class="setting">Corner radius<input id="glass-radius" type="range" min="4" max="16" value="8"></label>
       <label class="setting">Toolbar density<select id="density" aria-label="Toolbar density"><option value="normal">Normal</option><option value="compact">Compact</option></select></label>
       <label class="setting">Text size<input id="text-size" type="range" min="12" max="18" value="14"></label>
-      <label class="setting">Search engine<select id="search-engine" aria-label="Search engine"><option value="duckduckgo">DuckDuckGo</option><option value="google">Google</option></select></label>
+      </details>
+      <details class="settings-group">
+        <summary id="settings-privacy"><span>Privacy &amp; filtering</span><small>Network filters and request records</small></summary>
       <label class="setting">uBlock Origin network filtering<input id="adblock" type="checkbox"></label>
       <p class="muted">Uses the official uBlock Origin core with EasyList, EasyPrivacy and your custom exceptions. Exceptions allow requests to the listed services, including some ads/trackers. Cosmetic filtering and extension features are not included.</p>
       <label class="setting">Request logging (optional)<input id="request-logging" type="checkbox"></label>
       <p class="muted">Logs only request metadata, never cookies, authorization headers or response bodies. At most 200 records per tab; native DIRECT requests cannot be inspected.</p>
       <p class="muted">Native privacy permissions, download folders, HTTP cache, third-party cookies/storage and direct-site uBlock filtering are controlled by your browser/extensions, not this page.</p>
+      </details>
+      <details class="settings-group">
+        <summary id="settings-storage"><span>Storage &amp; shortcuts</span><small>Saved data and keyboard controls</small></summary>
       <p class="muted">Settings and history are saved only in this browser. Scramjet manages website cookies and origin-scoped storage on its separate frontend; browser third-party storage policies still apply. Classic uses its own browser-local cookie jar and origin-scoped LocalStorage (1 MB / 1024 keys); its SessionStorage resets when the app reloads and site CacheStorage stays in memory (200 entries / 64 MB). Neither engine shares login state with the other engine or direct browsing. Complex login flows and CAPTCHA checks are not guaranteed.</p>
       <p class="muted">Shortcuts: Alt+T new tab, Alt+W close tab, Alt+L address bar, Alt+R reload, Alt+Left/Right navigation.</p>
+      </details>
     </dialog>
     <dialog id="routing-dialog" class="compact-dialog">
       <div class="dialog-heading"><h2>Site routing</h2><button class="icon-button" data-close aria-label="Close routing"><svg><use href="/icons.svg#close"></use></svg></button></div>
@@ -188,12 +241,17 @@
     <dialog id="about-dialog">
       <div class="dialog-heading"><h2>What works</h2><button class="icon-button" data-close aria-label="Close compatibility"><svg><use href="/icons.svg#close"></use></svg></button></div>
       <p>This is a <strong>Scramjet web proxy with a configurable Wisp backend</strong>, not a VPN. Scramjet rewrites websites in an isolated frontend and sends HTTP(S) and WebSocket connections through Wisp. The Wisp operator controls destination restrictions, connection limits and availability.</p>
-      <p>The older Classic HTTP(S) proxy remains available manually. Only Classic uses the optional authenticated, exact-host Supabase WebSocket relay. Private/internal addresses and non-standard website ports are blocked by the frontend; the Wisp server must independently enforce public-DNS and destination restrictions.</p>
+      <p>A legacy HTTP(S) proxy is available under advanced settings for compatibility. Only that engine uses the optional authenticated, exact-host Supabase WebSocket relay. Private/internal addresses and non-standard website ports are blocked by the frontend; the Wisp server must independently enforce public-DNS and destination restrictions.</p>
       <p>Login flows, browser storage restrictions, anti-bot checks, DRM and origin-sensitive APIs can still prevent a site from working. Switching engines does not transfer login state. No CAPTCHA or Cloudflare challenge is automatically solved or bypassed.</p>
       <p>WebRTC and system-wide tunneling are not provided. Scramjet is experimental; a loaded document is not proof of complete website compatibility.</p>
       <p class="muted"><a href="https://github.com/faultyaccount2/Ultraviolet-ubg" target="_blank" rel="noopener noreferrer">Source code and deployment instructions</a>. Scramjet and libcurl transport use AGPL-3.0; uBlock Origin core uses GPL-3.0-or-later. See the repository for corresponding source and pinned dependencies.</p>
     </dialog>
     <div id="notice" class="notice" role="alert" hidden></div>
+    <nav class="os-dock" aria-label="Applications">
+      <a href="https://ultraviolet-ubg.vercel.app/" class="dock-app dock-active" aria-label="Bromine workspace"><span class="dock-glyph bromine-glyph">Br</span><small>Bromine</small></a>
+      <a href="https://scramjet-ubg.vercel.app/" class="dock-app" target="_blank" rel="noopener" aria-label="Open Scramjet"><span class="dock-glyph scramjet-glyph"><i></i><i></i><i></i></span><small>Scramjet</small></a>
+      <button type="button" class="dock-app" data-action="settings" aria-label="Open system settings"><span class="dock-settings">⚙</span><small>Settings</small></button>
+    </nav>
     <noscript><p class="noscript">Enable JavaScript to use tabs, search and settings.</p></noscript>
   </body>
 </html>

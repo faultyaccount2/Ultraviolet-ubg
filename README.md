@@ -1,8 +1,41 @@
-# Bromine
+# Bromine · Glass Workspace
 
-A Farmers-inspired browser UI with **Scramjet as its main proxy engine**,
-a separately deployed isolated Scramjet frontend, and a configurable Wisp
-backend. The older Vercel Node HTTP(S) proxy remains a manual alternative.
+![Glass workspace](https://img.shields.io/badge/Bromine-Glass%20Workspace-303746?style=flat-square)
+![Primary engine](https://img.shields.io/badge/primary%20engine-Scramjet-796c61?style=flat-square)
+![Transports](https://img.shields.io/badge/transports-Bare%20%7C%20Wisp-536d78?style=flat-square)
+![Licenses](https://img.shields.io/badge/licenses-multiple-68727e?style=flat-square)
+
+Bromine is an experimental, self-hostable browsing workspace with a glass OS
+shell. Scramjet is the standard proxy engine. Website traffic uses either the
+public Bare HTTP endpoint or a Wisp server that each user configures in their
+own browser profile. A separate Scramjet app is available at
+[scramjet-ubg.vercel.app](https://scramjet-ubg.vercel.app/); the Bromine UI is
+[ultraviolet-ubg.vercel.app](https://ultraviolet-ubg.vercel.app/).
+
+This is a browser proxy, not a VPN or a general purpose anonymity service.
+Websites can block proxy traffic, require first-party verification, or fail for
+other compatibility reasons. No CAPTCHA, authentication or access control is
+automatically bypassed.
+
+**Project:** [Source and issues](https://github.com/faultyaccount2/Ultraviolet-ubg) ·
+[Terms](/terms) · [Privacy](/privacy) · [Copyright](/copyright) ·
+[DMCA / copyright reports](/dmca) · [Abuse reports](/abuse)
+
+> Before operating this project for the public, complete the owner and contact
+> details in the legal policies and review the DMCA and privacy checklist below.
+> This repository does not supply a legal entity, jurisdiction, support address,
+> or registered DMCA agent.
+
+## Contents
+
+- [Features](#features)
+- [Run locally](#run-and-test)
+- [Deploy the apps](#scramjet-transport-setup)
+- [Copyright, DMCA and legal readiness](#copyright-dmca-and-legal-readiness)
+- [Security and privacy notes](#cache-privacy-and-presentation)
+- [Licenses](#third-party-licenses)
+
+## Features
 
 ## Run and test
 
@@ -21,15 +54,18 @@ Scramjet/libcurl runtime connected to a loopback-only Wisp protocol fixture.
 The isolated test frontend uses port 4174; the fixture Wisp endpoint uses 4175.
 These fixtures are **not** production servers and must not be deployed.
 
-The UI provides independent draggable/pinnable tabs, duplicate/reopen/session
-controls, navigation stacks, reload/stop/home, search, bookmarks with
-import/export, history filtering/clearing, downloads, a request inspector,
-glass appearance settings and fullscreen. Web pages stay inside the app.
+The workspace includes independent draggable/pinnable tabs, navigation,
+search, bookmarks, history, downloads, request inspection, quick actions and
+fullscreen. An OS style menu bar and application dock provide shortcuts to
+Bromine, Scramjet and system settings. The desktop glass sits over a locally
+rendered rain ambience that can be turned off in Settings; it does not load
+remote wallpaper or tracking assets.
 Open tabs restore on startup by default. Disable **Restore tabs on startup** to
 remove the saved tab session and opt out.
 DuckDuckGo is the default search engine; Google is also available in Settings.
-Mocha, Charcoal, Ocean, Forest, Rose, High Contrast, Light and System themes
-include coordinated palettes. Selecting a theme applies its accent; custom
+Obsidian and Ember provide detailed miniature system previews. Mocha, Charcoal,
+Ocean, Forest, Rose, High Contrast, Light and System remain available as compact
+palette choices. Selecting a theme applies its accent; custom
 background/frame colors remain until Reset colors is used.
 Saved selections of the removed search provider migrate to DuckDuckGo without
 resetting other preferences.
@@ -37,7 +73,10 @@ Settings also provides saved color pickers and #RRGGBB inputs for the background
 surfaces, hover, accent, text, page frame, toolbar, tab bar, status bar and borders.
 Reset colors restores the selected theme. Frame color does not recolor upstream
 website content.
-Scramjet is the default proxy engine; optional DIRECT mode is an iframe, not a native tab.
+Scramjet is the default proxy engine for new browser profiles; the legacy
+Classic HTTP(S) engine is hidden under **Settings → Connection & routing →
+Legacy engine options** for compatibility. Optional DIRECT mode is an iframe,
+not a native tab.
 Direct embedding can be refused by the destination. Cross-origin failures
 cannot be reliably classified, so no insecure timer-based fallback is used.
 Use Site Routing to select Proxy explicitly.
@@ -101,7 +140,6 @@ For the Scramjet project, set these **public** build variables for Production:
 
 ```text
 BROMINE_APP_ORIGINS=https://ultraviolet-ubg.vercel.app
-BROMINE_WISP_URL=wss://bromine-wisp.iknowikea.workers.dev/wisp/
 BROMINE_BARE_URL=https://bromine-bare.e42xec.workers.dev/bare/
 ```
 
@@ -112,7 +150,6 @@ Production and redeploy:
 
 ```text
 BROMINE_SCRAMJET_ORIGIN=https://scramjet-ubg.vercel.app
-BROMINE_WISP_URL=wss://bromine-wisp.iknowikea.workers.dev/wisp/
 BROMINE_BARE_URL=https://bromine-bare.e42xec.workers.dev/bare/
 ```
 
@@ -128,9 +165,12 @@ validated app connection and the standalone toolbar stays hidden.
 The Worker origin allowlist, if configured,
 must include the **Scramjet frontend origin**, where its WebSocket originates.
 
-These are public endpoint addresses, not credentials: do not put tokens
-or passwords in them. Settings offers browser-local overrides for both values;
-clear old overrides to use the deployed build values.
+The Scramjet origin and Bare endpoint are public build configuration, not
+credentials. The build deliberately does not publish a Wisp endpoint: each
+person must enter a Wisp URL they control or have permission to use in their
+own Settings. The URL is stored in that browser's local settings. Existing
+saved Wisp URLs remain in place across updates; a fresh profile receives no
+shared Oracle VM endpoint. Never put tokens or passwords in endpoint URLs.
 HTTPS/WSS is required, except HTTP/WS loopback URLs for local development.
 The separate Scramjet origin is validated before enabling normal-origin
 iframes. Never host Scramjet's executable website frames on Bromine's UI origin
@@ -139,8 +179,8 @@ or add `allow-same-origin` to Classic's opaque frames.
 Scramjet uses the selected Bare or Wisp transport for HTTP(S), fetch/XHR, downloads and WebSocket
 traffic; it does not depend on the Classic gateway or Supabase relay. An invalid,
 missing or unreachable connection produces an explicit error, never a silent
-Classic fallback. **Settings → Proxy engine → Classic HTTP proxy** is a manual
-alternative; reload open pages after changing engines or endpoints. Changing
+Classic fallback. The Classic engine is in **Settings → Connection & routing →
+Legacy engine options**; reload open pages after changing engines or endpoints. Changing
 engines does not migrate website login state. Bare is the default transport
 for every Scramjet page. Settings can explicitly select Wisp instead;
 unreachable Bare is reported, not silently replaced by Wisp.
@@ -178,7 +218,7 @@ and dependency versions are available in this repository and its lockfile:
 [Bare transport (LGPL-3.0)](https://github.com/MercuryWorkshop/bare-transport), and
 [uBlock core](https://github.com/gorhill/ubo-core).
 
-## Classic HTTP(S) compatibility boundary
+## Legacy Classic HTTP(S) compatibility boundary
 
 The following describes the manual **Classic HTTP proxy**, not Scramjet.
 
@@ -458,6 +498,67 @@ Do not run a placeholder function name or deploy before setting real values.
 Never paste passwords, access tokens, or service-role keys into chat or source
 control. Supabase Free has a short function wall-clock budget, so this relay
 closes sockets after 120 seconds and some real-time apps may reconnect or fail.
+
+## Copyright, DMCA and legal readiness
+
+Bromine does not provide user upload or public publishing features. It opens
+remote pages selected by a user and may temporarily cache eligible public
+assets. The project operator does not control the source website or decide who
+owns its material. A copyright concern about a destination page should normally
+also be sent to that destination's hosting provider.
+
+This source tree does **not** identify the service's legal operator, business
+entity, jurisdiction, postal address, support contact, or a registered DMCA
+agent. The `/dmca` page must not be treated as a live notice channel until the
+operator supplies and publishes a real contact. Posting a policy or README does
+not register an agent or guarantee a statutory safe harbor. Whether a specific
+proxy, cache, or deployment qualifies is a legal question for qualified counsel.
+
+Before a public operator relies on 17 U.S.C. § 512:
+
+1. Identify the legal service provider and the applicable service categories
+   with counsel. For categories that require an agent, register a designated
+   agent through the [Copyright Office DMCA Directory](https://www.copyright.gov/dmca-directory/).
+2. Publish the agent's real name, service-provider name, postal address,
+   telephone number and email on a public policy page, and keep that information
+   consistent with the Office directory. Renew or confirm the designation at
+   least every three years, and promptly update changed information.
+3. Provide a monitored, private intake channel and a written process for
+   reviewing notices, disabling access to material under the operator's
+   control when appropriate, notifying affected users, and securely retaining
+   case records. Do not ask people to post private legal notices, addresses,
+   or evidence in public issue trackers.
+4. Adopt and reasonably implement a repeat-infringer policy if required for
+   the safe harbor being claimed. Have counsel review the policy, notices,
+   counter-notice workflow, retention schedule, and any cross-border issues.
+
+A notice under § 512(c)(3) generally needs a physical or electronic signature;
+identification of the copyrighted work; identification and location of the
+claimed infringing material; the complainant's contact information; a good-faith
+belief statement; and a statement of accuracy and authority under penalty of
+perjury. See the [Copyright Office Section 512 guide](https://www.copyright.gov/512/)
+for the current statutory process and sample notices. A counter-notice has its
+own signature, identification, contact, good-faith, penalty-of-perjury,
+jurisdiction and service-of-process requirements. The statute provides a
+10–14 business-day restoration window in specified circumstances; do not
+promise restoration or removal without checking the actual notice and legal
+requirements. A policy page alone cannot make the service “DMCA-proof.”
+
+The public legal pages intentionally say that no designated agent or private
+operator contact is configured. Replace that text only after the real operator
+has established and verified the contact process. See [Terms](/terms),
+[Privacy](/privacy), [Copyright](/copyright), [DMCA reports](/dmca),
+[Abuse reports](/abuse), and [Contact](/contact).
+
+## Third-party licenses
+
+The repository combines components with different licenses. Review the
+included license files and pinned dependency notices before distributing a
+modified or hosted version. Scramjet and libcurl transport are AGPL-3.0-only;
+uBlock Origin core is GPL-3.0-or-later; other components retain their own
+licenses. The root package's `MIT` declaration does not replace the terms for
+bundled dependencies. See [`LICENSE`](./LICENSE), [`LICENSES/`](./LICENSES/),
+and the [license and source links above](#scramjet-transport-setup).
 
 ## Vercel deployment
 

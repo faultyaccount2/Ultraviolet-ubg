@@ -3,13 +3,13 @@ import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { StaticNetFilteringEngine } from "@gorhill/ubo-core";
-import { DEFAULT_BARE_URL, validateBareUrl, validateWispUrl } from "./config.js";
+import { DEFAULT_BARE_URL, validateBareUrl } from "./config.js";
 
 const root = new URL("./", import.meta.url);
 const output = new URL("public/", root);
 
 export async function buildScramjetHost(compiledFilters) {
-  const wispUrl = process.env.BROMINE_WISP_URL ? validateWispUrl(process.env.BROMINE_WISP_URL) : "";
+  const wispUrl = "";
   const bareUrl = validateBareUrl(process.env.BROMINE_BARE_URL || DEFAULT_BARE_URL);
   const origins = (process.env.BROMINE_APP_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean).map((value) => {
     const url = new URL(value);

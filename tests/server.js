@@ -13,7 +13,7 @@ execFileSync(process.execPath, ["scripts/build.js"], {
     ...process.env,
     BROMINE_SCRAMJET_ORIGIN: "http://127.0.0.1:4174",
     BROMINE_APP_ORIGINS: "http://127.0.0.1:4173",
-    BROMINE_WISP_URL: "ws://127.0.0.1:4175/wisp/",
+    BROMINE_TEST_WISP_URL: "ws://127.0.0.1:4175/wisp/",
     BROMINE_BARE_URL: "http://127.0.0.1:4176/bare/",
   },
 });

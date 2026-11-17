@@ -50,7 +50,7 @@ function writeStore(name, value) {
   }
 }
 
-const themes = ["mocha", "charcoal", "ocean", "forest", "rose", "contrast", "light", "system"];
+const themes = ["mocha", "obsidian", "ember", "charcoal", "ocean", "forest", "rose", "contrast", "light", "system"];
 const engines = {
   duckduckgo: "https://duckduckgo.com/?q=",
   google: "https://www.google.com/search?q=",
@@ -63,7 +63,7 @@ const colorLabels = {
 const hexColor = /^#[a-f\d]{6}$/i;
 const defaults = {
   theme: "mocha", engine: "duckduckgo", adblock: true, mode: "proxy",
-  proxyEngine: "scramjet", scramjetOrigin: "", wispUrl: "", bareUrl: "", transport: "bare",
+  proxyEngine: "scramjet", scramjetOrigin: "", wispUrl: "", bareUrl: "", transport: "bare", rain: true,
   proxyDomains: [], restore: true, homepage: "", bookmarksBar: false, statusBar: true,
   accent: "", colors: {}, opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
   textSize: 14, logging: true, cacheEnabled: true, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",
@@ -72,6 +72,7 @@ const settings = { ...defaults, ...readStore("bromine:settings", defaults,
   (value) => value && themes.includes(value.theme) && (Object.hasOwn(engines, value.engine) || value.engine === "bing") && typeof value.adblock === "boolean" &&
     (value.mode === undefined || ["automatic", "direct", "proxy"].includes(value.mode)) &&
     (value.proxyEngine === undefined || ["scramjet", "classic"].includes(value.proxyEngine)) &&
+    (value.rain === undefined || typeof value.rain === "boolean") &&
     ["scramjetOrigin", "wispUrl", "bareUrl"].every((key) => value[key] === undefined || typeof value[key] === "string") &&
     (value.transport === undefined || ["", "bare", "wisp"].includes(value.transport)) &&
     (value.restore === undefined || typeof value.restore === "boolean") &&
@@ -121,6 +122,11 @@ let history = readStore("bromine:history", [], (value) => Array.isArray(value) &
     /^https?:\/\//.test(row.url) && typeof row.title === "string" && Number.isFinite(row.time)));
 function applyAppearance() {
   document.documentElement.dataset.theme = settings.theme === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "mocha") : settings.theme;
+  for (const choice of document.querySelectorAll("[data-theme-choice]")) {
+    const active = choice.dataset.themeChoice === settings.theme;
+    if (choice.matches(".theme-card")) choice.setAttribute("aria-pressed", String(active));
+    else choice.classList.toggle("is-selected", active);
+  }
   document.documentElement.style.removeProperty("--accent");
   for (const [name, value] of Object.entries({
     ...(settings.accent ? { "--accent": settings.accent } : {}), "--glass-opacity": `${settings.opacity}%`, "--blur": `${settings.blur}px`,
@@ -131,6 +137,7 @@ function applyAppearance() {
     if (settings.colors[key]) document.documentElement.style.setProperty(`--${key}`, settings.colors[key]);
   }
   document.documentElement.dataset.density = settings.density;
+  document.documentElement.dataset.rain = settings.rain === false ? "off" : "on";
   $("#bookmarks-bar").hidden = !settings.bookmarksBar;
   $(".status-bar").hidden = !settings.statusBar;
   const favicon = settings.cloakIcon === "neutral" ? "/favicon-neutral.svg" : "/favicon.svg";
@@ -189,6 +196,115 @@ $("#reset-colors").addEventListener("click", () => {
 });
 applyAppearance();
 matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyAppearance);
+function startRain() {
+  const canvas = $("#rain-canvas");
+  const context = canvas?.getContext("2d", { alpha: true });
+  if (!context) return;
+  const drops = [];
+  let width = 0;
+  let height = 0;
+  let scale = 1;
+  function resize() {
+    scale = Math.min(window.devicePixelRatio || 1, 1.5);
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+    const amount = Math.min(150, Math.round(width / 12));
+    drops.length = 0;
+    for (let index = 0; index < amount; index++) drops.push({
+      x: Math.random() * width, y: Math.random() * height, speed: 2 + Math.random() * 5,
+      length: 6 + Math.random() * 18, width: .35 + Math.random() * .65, alpha: .035 + Math.random() * .08,
+    });
+  }
+  function draw() {
+    context.clearRect(0, 0, width, height);
+    if (document.documentElement.dataset.rain === "on" && !document.hidden && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      context.lineCap = "round";
+      for (const drop of drops) {
+        drop.speed = Math.min(10, drop.speed + .018);
+        drop.x += .38;
+        drop.y += drop.speed;
+        context.beginPath();
+        context.strokeStyle = `rgba(213,226,239,${drop.alpha})`;
+        context.lineWidth = drop.width;
+        context.moveTo(drop.x, drop.y);
+        context.lineTo(drop.x - .8, drop.y + drop.length);
+        context.stroke();
+        if (drop.y > height + drop.length) {
+          drop.y = -drop.length - Math.random() * height * .2;
+          drop.x = Math.random() * width;
+          drop.speed = 2 + Math.random() * 5;
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  resize();
+  window.addEventListener("resize", resize, { passive: true });
+  requestAnimationFrame(draw);
+}
+startRain();
+function updateClock() {
+  const clock = $("#os-clock");
+  if (clock) clock.textContent = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date());
+}
+updateClock();
+setInterval(updateClock, 30_000);
+const settingNavTargets = {
+  appearance: "#settings-appearance", connection: "#settings-connection", interface: "#settings-interface",
+  privacy: "#settings-privacy", storage: "#settings-storage",
+};
+document.querySelectorAll("[data-settings-nav]").forEach((button) => button.addEventListener("click", () => {
+  const target = $(settingNavTargets[button.dataset.settingsNav]);
+  target?.closest("details") && (target.closest("details").open = true);
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelectorAll("[data-settings-nav]").forEach((item) => item.removeAttribute("aria-current"));
+  button.setAttribute("aria-current", "true");
+}));
+const settingExplanations = {
+  "proxy-engine": "Scramjet is the standard engine. The legacy option is tucked below for older profiles and compatibility.",
+  "scramjet-origin": "The separate site that runs Scramjet. Keep it on a different domain from Bromine.",
+  "scramjet-transport": "Choose where site connections go. Wisp requires a server you control or have permission to use.",
+  "bare-url": "The Bare endpoint used when Bare is selected. This is public configuration, not a secret.",
+  "wisp-url": "Your Wisp WebSocket address. It is stored in this browser; the app does not supply a shared private VM by default.",
+  "routing-mode": "Choose whether new sites use the proxy automatically, always use it, or try a direct embedded page.",
+  "proxy-domains": "Add one host per line. Use *.example.com for subdomains or =example.com for one exact host.",
+  "cloak-title": "Change the browser tab label. This only changes the app's appearance.",
+  "cloak-icon": "Choose the icon shown in the browser tab. It does not affect network privacy.",
+  homepage: "Leave blank to open the built-in workspace when you create a tab.",
+  "restore-tabs": "Reopen your previous Bromine tabs when this browser starts.",
+  "show-bookmarks": "Keep saved links visible below the address bar.",
+  "show-status": "Show loading messages and the privacy link at the bottom of the window.",
+  "rain-effect": "Animate fine rain on the desktop glass. Turn it off to save a little battery.",
+  "search-engine": "Choose which search provider receives searches from the address bar.",
+  "glass-opacity": "Set how much of the desktop wallpaper shows through the interface.",
+  "glass-blur": "Control how strongly the wallpaper softens behind glass surfaces.",
+  "glass-saturation": "Adjust color strength in the background seen through glass.",
+  "glass-radius": "Set the corner curve for windows, controls and cards.",
+  density: "Compact uses less vertical space in the tab and toolbar rows.",
+  "text-size": "Change the size of labels and controls across the interface.",
+  adblock: "Block matching network requests on proxy pages. This does not hide all ads or trackers.",
+  "request-logging": "Keep a short, local record of request addresses and results. Request bodies and cookies are not logged.",
+};
+for (const [id, explanation] of Object.entries(settingExplanations)) {
+  const control = $(`#${id}`);
+  const label = control?.closest("label.setting, label.stack-setting");
+  if (!label) continue;
+  const titleText = [...label.childNodes].find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+  if (titleText) {
+    const title = document.createElement("span");
+    title.className = "setting-title";
+    title.textContent = titleText.textContent.trim();
+    titleText.replaceWith(title);
+  }
+  label.classList.add("has-help");
+  const help = document.createElement("small");
+  help.className = "setting-help";
+  help.textContent = explanation;
+  label.append(help);
+}
 $("#theme").value = settings.theme;
 $("#search-engine").value = settings.engine;
 $("#adblock").checked = settings.adblock;
@@ -197,6 +313,7 @@ $("#homepage").value = settings.homepage;
 $("#cache-limit").value = String(settings.cacheLimit);
 $("#download-concurrent").value = String(settings.concurrent);
 $("#proxy-engine").value = settings.proxyEngine;
+$("#engine-status").textContent = settings.proxyEngine === "scramjet" ? "Scramjet" : "Classic HTTP proxy · legacy";
 $("#scramjet-origin").value = settings.scramjetOrigin || window.BROMINE_CONFIG?.scramjetOrigin || "";
 $("#wisp-url").value = settings.wispUrl || window.BROMINE_CONFIG?.wispUrl || "";
 $("#bare-url").value = settings.bareUrl || window.BROMINE_CONFIG?.bareUrl || "";
@@ -764,9 +881,24 @@ $("#theme").addEventListener("change", (event) => {
   applyAppearance();
   writeStore("bromine:settings", settings);
 });
+document.querySelectorAll("[data-theme-choice]").forEach((choice) => choice.addEventListener("click", () => {
+  settings.theme = choice.dataset.themeChoice;
+  settings.accent = "";
+  $("#theme").value = settings.theme;
+  applyAppearance();
+  writeStore("bromine:settings", settings);
+}));
+$("#reset-theme").addEventListener("click", () => {
+  settings.theme = "mocha";
+  settings.accent = "";
+  settings.colors = {};
+  $("#theme").value = settings.theme;
+  applyAppearance();
+  writeStore("bromine:settings", settings);
+});
 for (const [id, key, kind] of [
   ["routing-mode", "mode", "string"], ["restore-tabs", "restore", "boolean"], ["show-bookmarks", "bookmarksBar", "boolean"],
-  ["show-status", "statusBar", "boolean"], ["glass-opacity", "opacity", "number"],
+  ["show-status", "statusBar", "boolean"], ["rain-effect", "rain", "boolean"], ["glass-opacity", "opacity", "number"],
   ["glass-blur", "blur", "number"], ["glass-saturation", "saturation", "number"], ["glass-radius", "radius", "number"],
   ["density", "density", "string"], ["text-size", "textSize", "number"], ["request-logging", "logging", "boolean"],
   ["cloak-title", "cloakTitle", "string"], ["cloak-icon", "cloakIcon", "string"],
@@ -792,6 +924,7 @@ for (const [id, key, kind] of [
 }
 $("#proxy-engine").addEventListener("change", (event) => {
   settings.proxyEngine = event.target.value;
+  $("#engine-status").textContent = settings.proxyEngine === "scramjet" ? "Scramjet" : "Classic HTTP proxy · legacy";
   writeStore("bromine:settings", settings);
   if (!entry(current()).url) updateToolbar();
   notice("Proxy engine updated. Reload open pages to apply it; login storage is separate for each engine.");

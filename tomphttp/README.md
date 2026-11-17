@@ -57,10 +57,11 @@ Bromine UI project and the isolated `scramjet-ubg` project:
 BROMINE_BARE_URL=https://bromine-bare.e42xec.workers.dev/bare/
 ```
 
-Keep the existing `BROMINE_WISP_URL` for the Wisp option, and keep the existing
-`BROMINE_SCRAMJET_ORIGIN` (Bromine project) and `BROMINE_APP_ORIGINS` (Scramjet
-project). Use your actual Worker domain if different. Redeploy **both** Vercel
-projects, then reload Bromine.
+Keep `BROMINE_SCRAMJET_ORIGIN` (Bromine project) and `BROMINE_APP_ORIGINS`
+(Scramjet project). Use your actual Worker domain if different. Do not add a
+private Wisp VM endpoint as a Vercel build variable. Each user can enter an
+endpoint they control in Bromine Settings; it stays in that browser profile.
+Redeploy **both** Vercel projects, then reload Bromine.
 
 **Settings → Scramjet transport → Bare (default)** selects Bare for all sites;
 choose **Wisp (libcurl)** to switch. There is no silent fallback. The build

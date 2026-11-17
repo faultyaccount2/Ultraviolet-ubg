@@ -30,7 +30,9 @@ await writeFile("public/version.json", JSON.stringify({ commit }));
 const supabaseUrl = process.env.BROMINE_SUPABASE_URL || "";
 const supabasePublishableKey = process.env.BROMINE_SUPABASE_PUBLISHABLE_KEY || "";
 const scramjetOrigin = process.env.BROMINE_SCRAMJET_ORIGIN || "";
-const wispUrl = process.env.BROMINE_WISP_URL || "";
+// Never publish an operator's private Wisp endpoint as the shared app default.
+// The loopback fixture value is injected only by the local browser-test server.
+const wispUrl = process.env.BROMINE_TEST_WISP_URL || "";
 const bareUrl = validateBareUrl(process.env.BROMINE_BARE_URL || DEFAULT_BARE_URL);
 await writeFile("public/runtime-config.js", `window.BROMINE_CONFIG=${JSON.stringify({ supabaseUrl, supabasePublishableKey, scramjetOrigin, wispUrl, bareUrl })};\n`);
 const engine = await StaticNetFilteringEngine.create();
