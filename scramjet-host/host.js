@@ -2,10 +2,10 @@ import { validateNavigation } from "../shared/address.js";
 import { validateTransport } from "./config.js";
 import { PublicAssetCache } from "./cache.js";
 
-const status = document.querySelector("#status");
+const standalone = window === window.top;
+const status = document.querySelector(standalone ? "#status" : "#embed-status");
 const site = document.querySelector("#site");
 const allowedOrigins = window.BROMINE_SCRAMJET_CONFIG?.origins || [];
-const standalone = window === window.top;
 let port;
 let engine;
 let engineConfig;
@@ -29,7 +29,9 @@ function loadScript(src) {
 async function getEngine(config) {
   validateTransport(config);
   if (engine && engineConfig?.wispUrl === config.wispUrl && engineConfig?.bareUrl === config.bareUrl &&
-      engineConfig?.transport === config.transport && engineConfig?.adblock === config.adblock) return engine;
+      engineConfig?.transport === config.transport && engineConfig?.adblock === config.adblock &&
+      engineConfig?.logging === config.logging && engineConfig?.flags?.allowInvalidJs === config.flags?.allowInvalidJs &&
+      engineConfig?.flags?.allowFailedIntercepts === config.flags?.allowFailedIntercepts) return engine;
   if (loadingEngine) return loadingEngine;
   loadingEngine = (async () => {
     engine?.close();

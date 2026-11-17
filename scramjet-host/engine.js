@@ -82,7 +82,10 @@ export async function createEngine(element, config, cache, emit) {
     transport,
     serviceworker: registration.active || worker.active,
     config: { scramjetPath: "/vendor/scramjet.js", wasmPath: "/vendor/scramjet.wasm", injectPath: "/vendor/controller.inject.js" },
-    scramjetConfig: { flags: { allowInvalidJs: false, allowFailedIntercepts: false } },
+    scramjetConfig: { flags: {
+      allowInvalidJs: config.flags?.allowInvalidJs === true,
+      allowFailedIntercepts: config.flags?.allowFailedIntercepts === true,
+    } },
   });
   await controller.wait();
   const requests = new WeakMap();

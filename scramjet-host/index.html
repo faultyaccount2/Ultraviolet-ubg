@@ -4,47 +4,206 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
+    <meta name="theme-color" content="#141519">
     <title>Bromine Scramjet</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <style>
-      :root { color-scheme: dark; font: 14px system-ui, sans-serif; background: #11111b; color: #cdd6f4; }
-      html, body { height: 100%; margin: 0; }
-      body { display: flex; flex-direction: column; }
-      header { padding: .8rem 1rem; background: #181825; border-bottom: 1px solid #45475a; }
-      form { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
-      input { flex: 1; min-width: 10rem; }
-      input, button, select { padding: .65rem; border: 1px solid #585b70; border-radius: .5rem; font: inherit; background: #313244; color: inherit; }
-      button { cursor: pointer; }
-      a { color: #b4befe; }
-      header p { margin: .6rem 0 0; font-size: .85rem; }
-      .tabbar { display: flex; gap: .4rem; margin-bottom: .6rem; }
-      #tabs { display: flex; gap: .4rem; overflow-x: auto; min-width: 0; }
-      .tab { display: flex; flex: 0 0 auto; border: 1px solid #585b70; border-radius: .5rem; overflow: hidden; }
-      .tab button { border: 0; border-radius: 0; padding: .5rem; }
-      .tab [role="tab"] { display: flex; align-items: center; gap: .4rem; max-width: 12rem; }
-      .tab [role="tab"][aria-selected="true"] { background: #45475a; box-shadow: inset 0 -2px #b4befe; }
-      .tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .tab img { width: 16px; height: 16px; }
-      #status { margin: 0; padding: .7rem 1rem; overflow-wrap: anywhere; }
-      iframe { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: white; }
-      [hidden] { display: none !important; }
+      :root { color-scheme: dark; font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#111216; color:#e7e8ec; --surface:#202126d9; --surface-2:#292a30e8; --line:#ffffff18; --muted:#a0a2aa; --accent:#c9ccd4; }
+      * { box-sizing:border-box; }
+      html,body { width:100%;height:100%;margin:0;overflow:hidden; }
+      body { background:radial-gradient(ellipse at 18% 0%,#ffffff0b,transparent 36%),radial-gradient(ellipse at 88% 82%,#b6a7970a,transparent 32%),#111216; }
+      button,input,select,textarea { color:inherit;font:inherit; }
+      button { cursor:pointer; }
+      [hidden] { display:none!important; }
+      #standalone { position:relative;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden; }
+      #standalone[hidden] { display:none; }
+      .topbar { position:relative;z-index:4;display:flex;align-items:center;gap:12px;min-height:42px;padding:0 12px;border-bottom:1px solid var(--line);background:#17181ddf;backdrop-filter:blur(24px) saturate(130%);box-shadow:inset 0 1px #ffffff08; }
+      .brand { display:flex;align-items:center;gap:8px;flex:0 0 auto;color:#f1f1f3;font-size:12px;font-weight:650;letter-spacing:.01em; }
+      .brand-mark { display:grid;place-items:center;width:20px;height:20px;border:1px solid #ffffff25;border-radius:5px;color:#dfe1e6;font-size:9px; }
+      .workspace-tabs { display:flex;align-self:stretch;align-items:stretch;gap:2px;min-width:0; }
+      .workspace-tab { position:relative;padding:0 10px;border:0;border-radius:0;color:#a4a5ad;background:transparent;font-size:11px;white-space:nowrap;transition:color 160ms ease,background 160ms ease; }
+      .workspace-tab:hover { color:#f1f1f3;background:#ffffff08; }
+      .workspace-tab[aria-selected="true"] { color:#f5f5f7;background:#ffffff0b; }
+      .workspace-tab[aria-selected="true"]::after { position:absolute;right:8px;bottom:-1px;left:8px;height:1px;background:#d6d8df;content:""; }
+      .top-spacer { flex:1; }
+      .flag-button,.icon-button,.tab-add,.tab-close { display:grid;place-items:center;width:29px;height:28px;padding:0;border:1px solid transparent;border-radius:6px;color:#b6b7be;background:transparent; }
+      .flag-button { width:auto;min-width:68px;padding:0 8px;font-size:10px;white-space:nowrap; }
+      .flag-button:hover,.icon-button:hover,.tab-add:hover,.tab-close:hover { border-color:var(--line);color:#fff;background:#ffffff0b; }
+      .browser-toolbar { position:relative;z-index:3;display:flex;align-items:center;gap:5px;min-height:44px;padding:5px 12px;border-bottom:1px solid var(--line);background:#191a20b8;backdrop-filter:blur(24px) saturate(135%); }
+      .icon-button { font-size:15px; }
+      .icon-button:disabled { opacity:.38;cursor:default; }
+      #navigation { display:flex;flex:1;align-items:center;gap:6px;min-width:0;margin:0; }
+      #address { width:100%;min-width:0;height:30px;padding:0 11px;border:1px solid #ffffff1a;border-radius:7px;outline:none;background:#0e0f13a8;color:#ebebef;font-size:12px; }
+      #address:focus { border-color:#d7d9df70;box-shadow:0 0 0 2px #ffffff0b; }
+      #address::placeholder { color:#777983; }
+      .go-button { height:30px;padding:0 12px;border:1px solid #ffffff1c;border-radius:6px;background:#ffffff0b;color:#e8e9ec;font-size:11px; }
+      .go-button:hover { background:#ffffff13; }
+      .browser-tabs { display:flex;align-items:center;gap:5px;min-height:34px;padding:4px 12px;border-bottom:1px solid #ffffff12;background:#16171caf; }
+      #tabs { display:flex;flex:1;gap:4px;overflow-x:auto;min-width:0;scrollbar-width:thin; }
+      .tab { display:flex;flex:0 0 auto;overflow:hidden;border:1px solid #ffffff15;border-radius:6px;background:#ffffff06; }
+      .tab button { height:25px;padding:0 8px;border:0;border-radius:0;color:#aeb0b8;background:transparent;font-size:10px; }
+      .tab [role="tab"] { display:flex;align-items:center;gap:6px;max-width:180px; }
+      .tab [role="tab"][aria-selected="true"] { color:#f3f3f5;background:#ffffff10; }
+      .tab span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+      .tab img { width:13px;height:13px; }
+      .tab .tab-close { width:23px;padding:0;color:#8c8e96; }
+      .tab-add { width:25px;height:25px;border-color:#ffffff12;background:#ffffff05; }
+      .workspace { position:relative;flex:1;min-height:0;overflow:hidden; }
+      .view-panel { position:absolute;inset:0;min-width:0;min-height:0;overflow:auto; }
+      #browser-view { overflow:hidden;background:#0d0e11; }
+      .welcome { width:min(650px,calc(100% - 40px));margin:44px auto 32px;color:#d3d4da; }
+      .welcome h1 { margin:0 0 5px;color:#f2f2f4;font-size:26px;font-weight:610;letter-spacing:-.035em; }
+      .build-meta { margin:0 0 20px;color:#898b94;font-size:10px;letter-spacing:.04em; }
+      .welcome p { margin:0 0 13px;color:#b9bbc2;font-size:12px;line-height:1.65; }
+      .welcome strong { color:#f0f0f2;font-weight:600; }
+      .welcome h2 { margin:18px 0 3px;color:#ededf0;font-size:14px;font-weight:600; }
+      .welcome a { color:#c8cbd3;text-underline-offset:3px; }
+      .standalone-frame { position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff; }
+      #status { position:relative;z-index:2;min-height:25px;margin:0;padding:5px 12px;overflow-wrap:anywhere;border-top:1px solid #ffffff12;background:#17181dbd;color:#9ea0a8;font-size:10px; }
+      #requests-view,#playground-view,#settings-view { padding:22px clamp(14px,3vw,38px);background:#111216; }
+      .page-heading { display:flex;align-items:end;justify-content:space-between;gap:20px;margin:0 auto 15px;max-width:1100px; }
+      .eyebrow { color:#94969f;font-size:9px;font-weight:600;letter-spacing:.13em;text-transform:uppercase; }
+      .page-heading h1 { margin:3px 0 2px;font-size:20px;font-weight:590;letter-spacing:-.025em; }
+      .page-heading p { margin:0;color:var(--muted);font-size:11px; }
+      .subtle-button,.primary-button { min-height:29px;padding:0 10px;border:1px solid #ffffff1a;border-radius:6px;background:#ffffff08;color:#c7c8ce;font-size:10px; }
+      .subtle-button:hover,.primary-button:hover { background:#ffffff12;color:#fff; }
+      .request-wrap,.playground-grid,.settings-grid { max-width:1100px;margin:0 auto; }
+      .request-wrap { overflow:auto;border:1px solid var(--line);border-radius:8px;background:#1b1c21ad; }
+      .request-table { width:100%;border-collapse:collapse;text-align:left;font-size:10px; }
+      .request-table th { position:sticky;top:0;padding:9px 10px;border-bottom:1px solid var(--line);background:#202126;color:#9fa1a9;font-size:9px;font-weight:550;letter-spacing:.04em; }
+      .request-table td { max-width:340px;padding:8px 10px;overflow:hidden;border-bottom:1px solid #ffffff0b;color:#c4c5cb;text-overflow:ellipsis;white-space:nowrap; }
+      .request-table tbody tr:hover { background:#ffffff06; }
+      .request-empty { padding:26px;text-align:center;color:#9698a1;font-size:11px; }
+      .playground-grid { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;min-height:0; }
+      .playground-editor,.playground-output,.settings-card { min-width:0;border:1px solid var(--line);border-radius:8px;background:#1a1b20c9;box-shadow:inset 0 1px #ffffff08; }
+      .playground-editor { display:flex;flex-direction:column;gap:9px;padding:13px; }
+      .editor-field { display:grid;gap:5px;color:#bfc0c7;font-size:10px; }
+      .editor-field textarea { width:100%;min-height:84px;resize:vertical;padding:8px;border:1px solid #ffffff17;border-radius:6px;outline:none;background:#101115;color:#e0e1e5;font:11px/1.5 ui-monospace,SFMono-Regular,monospace; }
+      .playground-output { min-height:340px;overflow:hidden; }
+      #play-preview { display:block;width:100%;height:100%;min-height:340px;border:0;background:#fff; }
+      .settings-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+      .settings-card { padding:14px; }
+      .settings-card h2 { margin:0 0 4px;font-size:12px;font-weight:590; }
+      .settings-card p { margin:0 0 12px;color:#9fa1aa;font-size:10px;line-height:1.55; }
+      .setting-control { display:grid;gap:5px;margin:10px 0;color:#d2d3d8;font-size:10px; }
+      .setting-control input,.setting-control select { width:100%;height:31px;padding:0 9px;border:1px solid #ffffff1a;border-radius:6px;outline:none;background:#121318;color:#e7e8eb;font-size:11px; }
+      .setting-control input:focus,.setting-control select:focus { border-color:#d9dbe36b; }
+      .setting-help { color:#92949e;font-size:9px;line-height:1.5; }
+      .flag-popover { position:fixed;z-index:8;top:47px;right:12px;width:min(320px,calc(100vw - 24px));padding:14px;border:1px solid #ffffff22;border-radius:9px;background:#202127ed;backdrop-filter:blur(26px);box-shadow:0 14px 38px #0008; }
+      .flag-popover h2 { margin:0 0 10px;font-size:13px;font-weight:590; }
+      .flag-setting { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #ffffff10;color:#d2d3d8;font-size:10px; }
+      .flag-setting input { accent-color:#d5d7dd; }
+      #flag-note { display:block;margin-top:8px;color:#93959e;font-size:9px; }
+      @media (max-width:720px) { .topbar { gap:6px;padding:0 7px; }.brand strong { display:none; }.workspace-tab { padding:0 7px;font-size:10px; }.browser-toolbar { padding:5px 7px; }.browser-tabs { padding:4px 7px; }.welcome { margin-top:28px; }.settings-grid,.playground-grid { grid-template-columns:1fr; }.playground-output { min-height:230px; }#play-preview { min-height:230px; }.request-table th,.request-table td { padding:7px 6px; } }
+      @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important;transition:none!important; } }
+      :root { background:#000;color:#ddd;--surface:#191919;--surface-2:#222;--line:#484848;--muted:#aaa;--accent:#ddd; }
+      body { background:#000; }
+      .topbar { gap:0;min-height:29px;padding:0;border-bottom:1px solid #484848;background:#101010;backdrop-filter:none;box-shadow:none; }
+      .brand { display:none; }
+      .workspace-tabs { flex:0 0 auto;gap:0; }
+      .workspace-tab { min-height:28px;padding:0 9px;border:1px solid transparent;border-bottom:0;border-radius:0;color:#aaa;font-size:12px; }
+      .workspace-tab:hover { background:#1a1a1a;color:#ddd; }
+      .workspace-tab[aria-selected="true"] { margin-top:0;margin-bottom:-1px;border-color:#484848;background:#202020;color:#fff; }
+      .workspace-tab[aria-selected="true"]::after { display:none; }
+      .top-spacer { display:none; }
+      .browser-toolbar { flex:1;min-width:0;gap:2px;min-height:28px;padding:0 5px;border:0;background:transparent;backdrop-filter:none; }
+      .icon-button { width:25px;height:26px;border-radius:2px;color:#aaa;font-size:14px; }
+      .icon-button:hover { border-color:transparent;background:#242424;color:#fff; }
+      #navigation { gap:3px; }
+      #address { height:25px;padding:0 8px;border-color:#424242;border-radius:2px;background:#090909;color:#e5e5e5;font-size:12px; }
+      #address:focus { border-color:#777;box-shadow:none; }
+      #address::placeholder { color:#777; }
+      .go-button { height:25px;padding:0 8px;border-color:#454545;border-radius:2px;background:#171717;color:#ddd; }
+      .go-button:hover { background:#252525; }
+      .tab-add { flex:0 0 24px;width:24px;height:24px;border-color:#454545;border-radius:2px;background:#171717; }
+      .flag-button { flex:0 0 auto;height:25px;min-width:0;margin:0 5px;padding:0 7px;border-color:#424242;border-radius:2px;background:#171717;color:#ddd;font-size:10px; }
+      .flag-button:hover { background:#242424; }
+      .browser-tabs { min-height:25px;padding:2px 5px;border-bottom:1px solid #333;background:#111; }
+      .tab { border-color:#414141;border-radius:2px;background:#161616; }
+      .tab button { height:21px;border-radius:0;font-size:10px; }
+      .tab [role="tab"][aria-selected="true"] { background:#292929;box-shadow:inset 0 -1px #aaa; }
+      #browser-view { background:#000; }
+      .welcome { width:min(704px,calc(100% - 32px));margin:52px auto 28px;color:#ddd; }
+      .welcome h1 { margin-bottom:2px;color:#f0f0f0;font-size:25px;font-weight:650;letter-spacing:-.02em; }
+      .build-meta { margin-bottom:19px;color:#aaa;font-size:10px;letter-spacing:.02em; }
+      .welcome p { margin:0 0 14px;color:#ccc;font-size:13px;line-height:1.55; }
+      .welcome strong,.welcome h2 { color:#e6e6e6; }
+      .welcome h2 { margin:17px 0 2px;font-size:14px;font-weight:650; }
+      .welcome a { color:#ddd; }
+      #status { min-height:24px;padding:4px 8px;border-top:1px solid #333;background:#101010;color:#aaa;font-size:10px; }
+      #requests-view,#playground-view,#settings-view { padding:20px clamp(12px,3vw,28px);background:#000; }
+      .page-heading { max-width:900px;margin-bottom:13px; }
+      .eyebrow { color:#999; }
+      .page-heading h1 { font-size:19px; }
+      .page-heading p,.settings-card p { color:#aaa; }
+      .subtle-button,.primary-button { min-height:27px;border-color:#454545;border-radius:2px;background:#151515;color:#ddd; }
+      .request-wrap,.playground-editor,.playground-output,.settings-card { border-color:#414141;border-radius:2px;background:#101010;box-shadow:none; }
+      .request-table th { background:#171717;color:#bbb; }
+      .request-table td { border-bottom-color:#262626;color:#ddd; }
+      .editor-field textarea,.setting-control input,.setting-control select { border-color:#454545;border-radius:2px;background:#080808; }
+      .setting-control { color:#ddd; }
+      .setting-help,#flag-note { color:#aaa; }
+      .flag-popover { top:33px;right:5px;border-color:#484848;border-radius:2px;background:#121212;backdrop-filter:none;box-shadow:0 8px 24px #000a; }
+      .flag-setting { border-color:#303030; }
+      @media(max-width:850px) { .topbar { flex-wrap:wrap;min-height:29px; }.workspace-tabs { flex:1; }.browser-toolbar { order:2;flex:1 1 100%;padding:3px 6px; }.topbar:has(.browser-toolbar[hidden]) { flex-wrap:nowrap; }.flag-button { margin-left:auto; }.browser-tabs { order:3; } }
     </style>
     <script src="/config.js"></script>
     <script type="module" src="/host.js"></script>
   </head>
   <body>
-    <header id="standalone" hidden>
-      <div class="tabbar"><div id="tabs" role="tablist" aria-label="Scramjet tabs"></div><button id="new-tab" type="button" aria-label="New tab">+</button></div>
-      <form id="navigation">
-        <strong>Scramjet</strong>
-        <input id="address" aria-label="Website URL" placeholder="http://info.cern.ch/" spellcheck="false" autocomplete="off" required>
-        <button type="submit">Go</button>
-        <button id="reload" type="button">Reload</button>
-        <select id="transport" aria-label="Transport"><option value="bare">Bare</option><option value="wisp">Wisp</option></select>
-      </form>
-      <p>Bare uses Worker HTTP fetch; Wisp uses raw TCP and its Cloudflare Worker cannot reach Cloudflare IPs. Sites may still require first-party verification. <a href="https://ultraviolet-ubg.vercel.app/" target="_blank" rel="noopener noreferrer">Open Bromine</a></p>
-    </header>
-    <p id="status" role="status">This isolated Scramjet frontend is opened by Bromine. Configure its allowed app origins before use. <a href="https://github.com/faultyaccount2/Ultraviolet-ubg" rel="noopener noreferrer" target="_blank">Source code</a> &middot; <a href="/LICENSE.txt">AGPL-3.0</a></p>
+    <div id="standalone" hidden>
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">Br</span><strong>Scramjet</strong></div>
+        <nav class="workspace-tabs" role="tablist" aria-label="Scramjet workspace">
+          <button class="workspace-tab" type="button" data-view="browser" role="tab" aria-selected="true">Browser</button>
+          <button class="workspace-tab" type="button" data-view="requests" role="tab" aria-selected="false">Requests</button>
+          <button class="workspace-tab" type="button" data-view="playground" role="tab" aria-selected="false">Playground</button>
+          <button class="workspace-tab" type="button" data-view="settings" role="tab" aria-selected="false">Settings</button>
+        </nav>
+        <div class="browser-toolbar" id="browser-toolbar">
+        <button id="back" class="icon-button" type="button" aria-label="Back" title="Back" disabled>‹</button>
+        <button id="forward" class="icon-button" type="button" aria-label="Forward" title="Forward" disabled>›</button>
+        <button id="reload" class="icon-button" type="button" aria-label="Reload" title="Reload">↻</button>
+        <form id="navigation">
+          <input id="address" aria-label="Website URL" placeholder="Search or enter a URL" spellcheck="false" autocomplete="off">
+          <button class="go-button" type="submit">Go</button>
+        </form>
+        <button id="new-tab" class="tab-add" type="button" aria-label="New tab" title="New tab">+</button>
+        </div>
+        <span class="top-spacer"></span>
+        <button id="flag-toggle" class="flag-button" type="button" aria-expanded="false" aria-controls="flag-editor">▶ Flag Editor</button>
+      </header>
+      <div class="browser-tabs" id="browser-tabs"><div id="tabs" role="tablist" aria-label="Scramjet browser tabs"></div></div>
+      <main class="workspace">
+        <section id="browser-view" class="view-panel" role="tabpanel" aria-label="Browser">
+          <div id="welcome" class="welcome">
+            <h1>Welcome to Scramjet</h1>
+            <p class="build-meta">Bromine workspace · Isolated Scramjet frontend</p>
+            <p><strong>Scramjet</strong> is an experimental interception-based browser engine. Enter a website above to open it in an isolated page.</p>
+            <p>Use the workspace tabs to inspect requests, experiment with a sandboxed page, or tune the connection. Site behavior can vary, and first-party security checks may still require opening a site directly.</p>
+            <h2>Browser</h2><p>Pages open inside a separate sandbox. Back, forward, reload, and browser tabs stay in this workspace.</p>
+            <h2>Requests</h2><p>Inspect the request method, destination, response, and timing reported by Scramjet. Request addresses are kept only in this browser session.</p>
+            <h2>Playground</h2><p>Write HTML, CSS, and JavaScript and preview it in a sandboxed frame.</p>
+            <h2>Settings</h2><p>Choose Bare or Wisp for this standalone Scramjet app. Add a Wisp endpoint you are authorized to use; the setting is saved only on this origin.</p>
+          </div>
+        </section>
+        <section id="requests-view" class="view-panel" role="tabpanel" aria-label="Requests" hidden>
+          <header class="page-heading"><div><span class="eyebrow">Network inspector</span><h1>Requests</h1><p>Recent requests captured by the active Scramjet tab.</p></div><button id="clear-requests" class="subtle-button" type="button">Clear list</button></header>
+          <div class="request-wrap"><table class="request-table"><thead><tr><th>Method</th><th>Address</th><th>Type</th><th>Status</th><th>Time</th></tr></thead><tbody id="request-list"></tbody></table><div id="request-empty" class="request-empty">Requests appear here after you browse a page.</div></div>
+        </section>
+        <section id="playground-view" class="view-panel" role="tabpanel" aria-label="Playground" hidden>
+          <header class="page-heading"><div><span class="eyebrow">Sandbox</span><h1>Playground</h1><p>Build a small page preview without granting it access to this app.</p></div><button id="run-playground" class="primary-button" type="button">Run preview</button></header>
+          <div class="playground-grid"><div class="playground-editor"><label class="editor-field">HTML<textarea id="play-html" spellcheck="false"><main><h1>Hello, world.</h1><p>Your sandboxed preview appears beside the editor.</p></main></textarea></label><label class="editor-field">CSS<textarea id="play-css" spellcheck="false">body { font: 16px system-ui; padding: 24px; color: #222; } h1 { margin-top: 0; }</textarea></label><label class="editor-field">JavaScript<textarea id="play-js" spellcheck="false">console.log("Playground ready");</textarea></label></div><div class="playground-output"><iframe id="play-preview" title="Sandboxed playground preview" sandbox="allow-scripts" srcdoc="<!doctype html><meta charset=utf-8><p>Run preview to render your code.</p>"></iframe></div></div>
+        </section>
+        <section id="settings-view" class="view-panel" role="tabpanel" aria-label="Settings" hidden>
+          <header class="page-heading"><div><span class="eyebrow">Connection and behavior</span><h1>Settings</h1><p>Configure this standalone Scramjet app on this device.</p></div><button id="save-settings" class="primary-button" type="button">Save settings</button></header>
+          <div class="settings-grid"><section class="settings-card"><h2>Network transport</h2><p>Bare sends proxied HTTP through its configured endpoint. Wisp uses the Wisp server you enter to create TCP connections.</p><label class="setting-control">Transport<select id="transport" aria-label="Transport"><option value="bare">Bare</option><option value="wisp">Wisp</option></select></label><label class="setting-control">Wisp WebSocket URL<input id="wisp-url" type="url" placeholder="wss://your-server.example/wisp/" spellcheck="false"></label><small class="setting-help">Choose Wisp only when you have an endpoint and permission to use it. A successful WebSocket connection does not by itself confirm the Wisp protocol or destination access.</small></section><section class="settings-card"><h2>Bare endpoint</h2><p>Used when Bare is selected. It must be an HTTPS Bare server ending in a slash.</p><label class="setting-control">Bare URL<input id="bare-url" type="url" placeholder="https://example.com/bare/" spellcheck="false"></label><small class="setting-help">These fields are stored in this browser’s local storage and are not uploaded by this page.</small></section><section class="settings-card"><h2>Request inspection</h2><p>Record request summaries for the Requests view. Addresses are redacted before they are shown.</p><label class="setting-control">Capture request records<select id="request-logging"><option value="on">On</option><option value="off">Off</option></select></label></section></div>
+        </section>
+      </main>
+      <p id="status" role="status">Ready</p>
+      <aside id="flag-editor" class="flag-popover" hidden aria-label="Scramjet flags"><h2>Scramjet flags</h2><label class="flag-setting">Allow invalid JavaScript<input id="flag-invalid-js" type="checkbox"></label><label class="flag-setting">Allow failed interception<input id="flag-failed-intercepts" type="checkbox"></label><small id="flag-note">Changes apply to the next navigation. Relaxing flags can reduce page isolation reliability.</small></aside>
+    </div>
+    <p id="embed-status" role="status">This isolated Scramjet frontend is opened by Bromine. Configure its allowed app origins before use. <a href="https://github.com/faultyaccount2/Ultraviolet-ubg" rel="noopener noreferrer" target="_blank">Source code</a> · <a href="/LICENSE.txt">AGPL-3.0</a></p>
     <iframe id="site" title="Scramjet website" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads" referrerpolicy="no-referrer" hidden></iframe>
   </body>
 </html>

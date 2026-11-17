@@ -172,14 +172,21 @@ BROMINE_BARE_URL=https://bromine-bare.e42xec.workers.dev/bare/
 Use the actual production domain Vercel assigns to the new Scramjet project
 if it differs from `scramjet-ubg.vercel.app`. If Bromine uses another domain,
 put that exact origin in `BROMINE_APP_ORIGINS` and redeploy Scramjet too.
-Opening `https://scramjet-ubg.vercel.app` directly shows a standalone proxy
-with an address bar, reload, transport selector, tabs and website downloads, using its own
-build endpoints. The deployed Bare URL is the build default; `BROMINE_BARE_URL`
-can override it.
+Opening `https://scramjet-ubg.vercel.app` directly shows the standalone Scramjet
+workspace with Browser, Requests, Playground and Settings views, an address bar,
+navigation controls, optional website tabs, downloads and the Flag Editor. Its
+Settings view stores Bare/Wisp endpoint choices on that origin. The deployed
+Bare URL is the build default; `BROMINE_BARE_URL` can override it.
 When embedded, Bromine still sends its endpoint over the
 validated app connection and the standalone toolbar stays hidden.
 The Worker origin allowlist, if configured,
 must include the **Scramjet frontend origin**, where its WebSocket originates.
+
+Standalone Scramjet settings live on `scramjet-ubg.vercel.app` and are separate
+from Bromine's settings on `ultraviolet-ubg.vercel.app`. A Bromine settings
+share link only configures Bromine when imported there; it does not copy browser
+storage between those origins. To use Wisp in the standalone app, open its
+**Settings**, enter the Wisp URL, select Wisp, save, then reload the page.
 
 The Scramjet origin and Bare endpoint are public build configuration, not
 credentials. The build deliberately does not publish a Wisp endpoint: each
