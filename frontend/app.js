@@ -215,7 +215,7 @@ function startRain() {
     drops.length = 0;
     for (let index = 0; index < amount; index++) drops.push({
       x: Math.random() * width, y: Math.random() * height, speed: 2 + Math.random() * 5,
-      length: 6 + Math.random() * 18, width: .35 + Math.random() * .65, alpha: .035 + Math.random() * .08,
+      length: 9 + Math.random() * 22, width: .45 + Math.random() * .8, alpha: .08 + Math.random() * .17,
     });
   }
   function draw() {

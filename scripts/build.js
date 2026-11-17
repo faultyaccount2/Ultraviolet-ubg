@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { StaticNetFilteringEngine } from "@gorhill/ubo-core";
 import { buildScramjetHost } from "../scramjet-host/build.js";
-import { DEFAULT_BARE_URL, validateBareUrl } from "../scramjet-host/config.js";
+import { DEFAULT_BARE_URL, validateBareUrl, validateWispUrl } from "../scramjet-host/config.js";
 
 const worker = await build({
   entryPoints: ["frontend/proxy-worker.js"],
@@ -32,7 +32,14 @@ const supabasePublishableKey = process.env.BROMINE_SUPABASE_PUBLISHABLE_KEY || "
 const scramjetOrigin = process.env.BROMINE_SCRAMJET_ORIGIN || "";
 // Never publish an operator's private Wisp endpoint as the shared app default.
 // The loopback fixture value is injected only by the local browser-test server.
-const wispUrl = process.env.BROMINE_TEST_WISP_URL || "";
+const testWispUrl = process.env.BROMINE_TEST_WISP_URL || "";
+if (testWispUrl) {
+  const testEndpoint = new URL(validateWispUrl(testWispUrl));
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(testEndpoint.hostname)) {
+    throw new Error("BROMINE_TEST_WISP_URL is reserved for loopback fixtures.");
+  }
+}
+const wispUrl = testWispUrl;
 const bareUrl = validateBareUrl(process.env.BROMINE_BARE_URL || DEFAULT_BARE_URL);
 await writeFile("public/runtime-config.js", `window.BROMINE_CONFIG=${JSON.stringify({ supabaseUrl, supabasePublishableKey, scramjetOrigin, wispUrl, bareUrl })};\n`);
 const engine = await StaticNetFilteringEngine.create();
