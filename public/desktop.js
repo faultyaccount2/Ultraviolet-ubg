@@ -291,12 +291,14 @@
     const settingsFrame = frameFor("settings");
     const forwardShare = () => settingsFrame?.contentWindow?.postMessage({ type: "bromine:settings-share-import", hash: settingsShareHash }, location.origin);
     settingsFrame?.addEventListener("load", forwardShare, { once: true });
-    openWindow("settings");
-    let attempts = 0;
-    const waitForSettingsApp = setInterval(() => {
-      forwardShare();
-      if (++attempts >= 20) clearInterval(waitForSettingsApp);
-    }, 250);
+    setTimeout(() => {
+      openWindow("settings");
+      let attempts = 0;
+      const waitForSettingsApp = setInterval(() => {
+        forwardShare();
+        if (++attempts >= 20) clearInterval(waitForSettingsApp);
+      }, 250);
+    }, 0);
   }
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeStartMenu();
