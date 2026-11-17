@@ -9,9 +9,8 @@ Bromine is an experimental, self-hostable browsing desktop with two independent
 proxy windows, a floating taskbar and a movable Settings app. Scramjet is the
 standard proxy engine. Website traffic uses either the public Bare HTTP endpoint
 or a Wisp server that each user configures in their own browser profile. The
-separate Scramjet frontend is at
-[scramjet-ubg.vercel.app](https://scramjet-ubg.vercel.app/); the Bromine desktop
-is at [ultraviolet-ubg.vercel.app](https://ultraviolet-ubg.vercel.app/).
+desktop and both proxy windows run from one site and one origin. Proxy windows
+open inside the desktop instead of navigating to a separate frontend.
 
 This is a browser proxy, not a VPN or a general purpose anonymity service.
 Websites can block proxy traffic, require first-party verification, or fail for
@@ -59,11 +58,14 @@ The desktop starts with two side-by-side proxy windows. Each can be dragged,
 resized, minimized, maximized, closed and restored from the taskbar. Each
 window has independent tabs, history and site storage while sharing the chosen
 appearance and connection preferences. The windows run the same browser app
-and stay in the desktop; the standalone Scramjet frontend remains separately
-available. Settings opens as another movable window. A translucent Start menu
+and stay in the desktop. Settings opens as another movable window. A translucent Start menu
 and taskbar provide app search, window switching and a local clock. The desktop
 glass sits over a locally rendered rain ambience that can be changed or turned
-off in Settings; it does not load remote wallpaper or tracking assets.
+off in Settings; it does not load remote wallpaper or tracking assets. Customize
+the desktop with ten palettes, a custom accent, per-surface colors, glass opacity,
+blur, saturation, corner radius, density, text size, three wallpaper treatments,
+and rain motion. Settings also groups proxy, window, performance and storage
+options with plain-English explanations.
 Open tabs restore on startup by default. Disable **Restore tabs on startup** to
 remove the saved tab session and opt out.
 DuckDuckGo is the default search engine; Google is also available in Settings.
