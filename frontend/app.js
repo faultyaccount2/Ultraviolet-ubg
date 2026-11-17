@@ -275,18 +275,117 @@ function updateClock() {
 }
 updateClock();
 setInterval(updateClock, 30_000);
-const settingNavTargets = {
-  appearance: "#settings-appearance", proxy: "#settings-connection", windows: "#settings-interface",
-  performance: "#settings-privacy", wallpaper: "#wallpaper-setting", storage: "#settings-storage",
-};
-document.querySelectorAll("[data-settings-nav]").forEach((button) => button.addEventListener("click", () => {
-  if (button.dataset.settingsNav === "about") { $("#about-dialog").showModal(); return; }
-  const target = $(settingNavTargets[button.dataset.settingsNav]);
-  target?.closest("details") && (target.closest("details").open = true);
-  target?.scrollIntoView({ behavior: "smooth", block: "start" });
-  document.querySelectorAll("[data-settings-nav]").forEach((item) => item.removeAttribute("aria-current"));
-  button.setAttribute("aria-current", "true");
-}));
+const settingsDialog = $("#settings-dialog");
+const settingsNav = settingsDialog.querySelector(".settings-nav");
+settingsNav.setAttribute("role", "tablist");
+const settingsPages = document.createElement("div");
+settingsPages.className = "settings-pages";
+settingsNav.after(settingsPages);
+
+function createSettingsPage(id, title, description) {
+  const page = document.createElement("section");
+  page.className = "settings-page";
+  page.id = `settings-page-${id}`;
+  page.dataset.settingsPage = id;
+  page.setAttribute("role", "tabpanel");
+  page.setAttribute("aria-labelledby", `settings-tab-${id}`);
+  if (title) {
+    const heading = document.createElement("header");
+    heading.className = "settings-page-heading";
+    const titleElement = document.createElement("h3");
+    titleElement.textContent = title;
+    heading.append(titleElement);
+    if (description) {
+      const copy = document.createElement("p");
+      copy.textContent = description;
+      heading.append(copy);
+    }
+    page.append(heading);
+  }
+  settingsPages.append(page);
+  return page;
+}
+
+function moveSettingsGroup(page, selector) {
+  const details = $(selector)?.closest("details");
+  if (!details) return;
+  const panel = document.createElement("div");
+  panel.className = "settings-group";
+  for (const child of [...details.children]) {
+    if (child.tagName !== "SUMMARY") panel.append(child);
+  }
+  page.append(panel);
+  details.remove();
+}
+
+const appearancePage = createSettingsPage("appearance");
+appearancePage.append($("#settings-appearance"), $(".legacy-theme-setting"));
+const colorsPage = createSettingsPage("colors", "Colors & accents", "Set the palette colors used across the interface.");
+moveSettingsGroup(colorsPage, "#settings-colors");
+const glassPage = createSettingsPage("glass", "Glass material", "Tune transparency, blur, and control sizing.");
+moveSettingsGroup(glassPage, "#settings-glass");
+
+const proxyPage = createSettingsPage("proxy", "Proxy connection", "Choose the engine and transport used by proxy windows.");
+const routingPage = createSettingsPage("routing", "Site routing", "Choose how new pages open and which sites prefer the proxy.");
+const connectionDetails = $("#settings-connection")?.closest("details");
+if (connectionDetails) {
+  const connectionPanel = document.createElement("div");
+  connectionPanel.className = "settings-group";
+  const routingPanel = document.createElement("div");
+  routingPanel.className = "settings-group";
+  for (const child of [...connectionDetails.children]) {
+    if (child.tagName === "SUMMARY") continue;
+    const routingControl = child.querySelector("#routing-mode, #proxy-domains") ||
+      (child.matches("p.muted") && child.textContent.startsWith("Pages stay embedded"));
+    (routingControl ? routingPanel : connectionPanel).append(child);
+  }
+  proxyPage.append(connectionPanel);
+  routingPage.append(routingPanel);
+  connectionDetails.remove();
+}
+
+const windowsPage = createSettingsPage("windows", "Windows & browser", "Set how browser windows, tabs, search, and startup behave.");
+const wallpaperPage = createSettingsPage("wallpaper", "Wallpaper & ambience", "Change the desktop atmosphere. These choices apply across the desktop.");
+for (const selector of ["#wallpaper", "#rain-effect"]) {
+  const control = $(selector)?.closest("label");
+  if (control) wallpaperPage.append(control);
+}
+moveSettingsGroup(windowsPage, "#settings-interface");
+
+const performancePage = createSettingsPage("performance", "Performance & privacy", "Control filtering and request logging for this browser profile.");
+moveSettingsGroup(performancePage, "#settings-privacy");
+
+const storagePage = createSettingsPage("storage", "Storage & shortcuts", "Review saved browser data and keyboard shortcuts.");
+moveSettingsGroup(storagePage, "#settings-storage");
+
+const aboutPage = createSettingsPage("about", "About Bromine", "What this browser can do and where to find project information.");
+for (const paragraph of $("#about-dialog").querySelectorAll(":scope > p")) aboutPage.append(paragraph.cloneNode(true));
+
+function showSettingsPage(id) {
+  for (const page of settingsPages.querySelectorAll("[data-settings-page]")) page.hidden = page.dataset.settingsPage !== id;
+  for (const tab of settingsNav.querySelectorAll("[data-settings-nav]")) {
+    const selected = tab.dataset.settingsNav === id;
+    tab.setAttribute("aria-current", String(selected));
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
+}
+
+settingsNav.querySelectorAll("[data-settings-nav]").forEach((button) => {
+  button.id = `settings-tab-${button.dataset.settingsNav}`;
+  button.setAttribute("role", "tab");
+  button.addEventListener("click", () => showSettingsPage(button.dataset.settingsNav));
+  button.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabs = [...settingsNav.querySelectorAll('[role="tab"]')];
+    const index = tabs.indexOf(button);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    event.preventDefault();
+    tabs[next].focus();
+    tabs[next].click();
+  });
+});
+showSettingsPage("appearance");
 const settingExplanations = {
   "proxy-engine": "Scramjet is the standard engine. The legacy option is tucked below for older profiles and compatibility.",
   "scramjet-origin": "The separate site that runs Scramjet. Keep it on a different domain from Bromine.",

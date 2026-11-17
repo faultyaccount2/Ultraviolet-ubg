@@ -64,12 +64,14 @@
       <footer class="start-footer"><span>Local desktop session</span><button type="button" data-start-toggle aria-label="Close Start menu">Close</button></footer>
     </aside>
     <footer class="taskbar" aria-label="Taskbar">
-      <button class="taskbar-start" type="button" data-start-toggle aria-label="Start"><span class="brand-mark">Br</span></button>
-      <label class="taskbar-search"><svg aria-hidden="true"><use href="/icons.svg#search"></use></svg><input id="taskbar-search-input" type="search" placeholder="Search" aria-label="Search apps or browse"></label>
-      <div class="taskbar-apps" aria-label="Running applications">
-        <button type="button" class="taskbar-app running selected" data-running="true" data-taskbar-window="proxy-1" data-open-window="proxy-1" aria-label="Proxy" title="Proxy"><span class="start-app-icon proxy-icon">P</span><i></i></button>
-        <button type="button" class="taskbar-app" data-running="false" data-taskbar-window="proxy-2" data-open-window="proxy-2" aria-label="Proxy 2" title="Proxy 2"><span class="start-app-icon proxy-two-icon"><i></i><i></i><i></i></span><i></i></button>
-        <button type="button" class="taskbar-app" data-running="false" data-taskbar-window="settings" data-open-window="settings" aria-label="Settings" title="Settings"><span class="start-app-icon settings-icon"><svg><use href="/icons.svg#settings"></use></svg></span><i></i></button>
+      <div class="taskbar-center">
+        <button class="taskbar-start" type="button" data-start-toggle aria-label="Start"><span class="brand-mark">Br</span></button>
+        <label class="taskbar-search"><svg aria-hidden="true"><use href="/icons.svg#search"></use></svg><input id="taskbar-search-input" type="search" placeholder="Search" aria-label="Search apps or browse"></label>
+        <div class="taskbar-apps" aria-label="Running applications">
+          <button type="button" class="taskbar-app running selected" data-running="true" data-taskbar-window="proxy-1" data-open-window="proxy-1" aria-label="Proxy" title="Proxy"><span class="start-app-icon proxy-icon">P</span><i></i></button>
+          <button type="button" class="taskbar-app" data-running="false" data-taskbar-window="proxy-2" data-open-window="proxy-2" aria-label="Proxy 2" title="Proxy 2"><span class="start-app-icon proxy-two-icon"><i></i><i></i><i></i></span><i></i></button>
+          <button type="button" class="taskbar-app" data-running="false" data-taskbar-window="settings" data-open-window="settings" aria-label="Settings" title="Settings"><span class="start-app-icon settings-icon"><svg><use href="/icons.svg#settings"></use></svg></span><i></i></button>
+        </div>
       </div>
       <div class="taskbar-tray"><span class="tray-network" aria-label="Network connected"></span><span class="tray-volume" aria-label="Audio"></span><time id="taskbar-clock"></time></div>
     </footer>

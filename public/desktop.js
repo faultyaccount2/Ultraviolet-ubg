@@ -20,7 +20,7 @@
     document.documentElement.style.setProperty("--desktop-blur", `${Math.max(0, Math.min(40, Number(value.blur) || 18))}px`);
     document.documentElement.style.setProperty("--glass-opacity", `${Math.max(55, Math.min(100, Number(value.opacity) || 82))}%`);
     document.documentElement.style.setProperty("--window-opacity", `${Math.max(65, Math.min(92, Number(value.opacity) || 82))}%`);
-    document.documentElement.style.setProperty("--desktop-radius", `${Math.max(5, Math.min(20, (Number(value.radius) || 8) + 3))}px`);
+    document.documentElement.style.setProperty("--desktop-radius", `${Math.max(3, Math.min(8, (Number(value.radius) || 8) * .5))}px`);
     document.documentElement.style.setProperty("--saturation", `${Math.max(100, Math.min(200, Number(value.saturation) || 130))}%`);
     if (typeof value.accent === "string" && /^#[a-f\d]{6}$/i.test(value.accent)) document.documentElement.style.setProperty("--accent", value.accent);
     for (const key of ["background", "surface", "hover", "text", "muted", "frame", "toolbar", "tabs", "status", "border"]) {
@@ -71,8 +71,8 @@
     const bounds = surface.getBoundingClientRect();
     const minWidth = window.innerWidth <= 620 ? Math.min(bounds.width - 16, 290) : 290;
     const minHeight = window.innerWidth <= 620 ? 230 : 250;
-    const width = Math.max(minWidth, Math.min(parseFloat(win.style.width) || bounds.width - 36, bounds.width - 16));
-    const height = Math.max(minHeight, Math.min(parseFloat(win.style.height) || bounds.height - 36, bounds.height - 16));
+    const width = Math.max(minWidth, Math.min(parseFloat(win.style.width) || bounds.width - 12, bounds.width - 12));
+    const height = Math.max(minHeight, Math.min(parseFloat(win.style.height) || bounds.height - 12, bounds.height - 12));
     win.style.width = `${width}px`;
     win.style.height = `${height}px`;
     win.style.left = `${Math.max(0, Math.min(parseFloat(win.style.left) || 0, bounds.width - width))}px`;
@@ -89,7 +89,7 @@
           width: parseFloat(win.style.width) || 0, height: parseFloat(win.style.height) || 0,
         };
       }
-      try { localStorage.setItem("bromine:desktop:layout", JSON.stringify({ version: 2, windows: layout })); } catch { /* The desktop still works without saved placement. */ }
+      try { localStorage.setItem("bromine:desktop:layout", JSON.stringify({ version: 3, windows: layout })); } catch { /* The desktop still works without saved placement. */ }
     }, 120);
   }
 
@@ -98,12 +98,12 @@
     let saved = {};
     try {
       const stored = JSON.parse(localStorage.getItem("bromine:desktop:layout") || "{}");
-      if (stored.version === 2 && stored.windows) saved = stored.windows;
+      if (stored.version === 3 && stored.windows) saved = stored.windows;
     } catch { /* Use the centered layout. */ }
-    const margin = 18;
-    const width = Math.max(290, Math.min(bounds.width - margin * 2, 1160));
-    const height = Math.max(230, Math.min(bounds.height - margin * 2, 780));
-    for (const id of ["proxy-1", "proxy-2"]) {
+    const margin = 6;
+    const width = Math.max(290, bounds.width - margin * 2);
+    const height = Math.max(230, bounds.height - margin * 2);
+    for (const id of ["proxy-1", "proxy-2", "settings"]) {
       const win = windowsById.get(id);
       const stored = saved[win.dataset.window];
       const actualWidth = Number.isFinite(stored?.width) && stored.width >= 290 ? Math.min(stored.width, bounds.width - margin * 2) : width;
@@ -115,13 +115,6 @@
       win.style.width = `${actualWidth}px`;
       win.style.height = `${actualHeight}px`;
     }
-    const settings = windowsById.get("settings");
-    const settingsWidth = Math.min(880, bounds.width - 32);
-    const settingsHeight = Math.min(740, bounds.height - 32);
-    settings.style.width = `${settingsWidth}px`;
-    settings.style.height = `${settingsHeight}px`;
-    settings.style.left = `${Math.max(8, Math.round((bounds.width - settingsWidth) / 2))}px`;
-    settings.style.top = `${Math.max(8, Math.round((bounds.height - settingsHeight) / 2))}px`;
   }
 
   function openWindow(id) {

@@ -99,7 +99,7 @@
     </template>
     <dialog id="settings-dialog">
       <div class="dialog-heading"><h2>Settings</h2><button class="icon-button" data-close aria-label="Close settings"><svg><use href="/icons.svg#close"></use></svg></button></div>
-      <nav class="settings-nav" aria-label="Settings sections"><button type="button" data-settings-nav="appearance">Appearance</button><button type="button" data-settings-nav="proxy">Proxy</button><button type="button" data-settings-nav="windows">Windows</button><button type="button" data-settings-nav="performance">Performance</button><button type="button" data-settings-nav="wallpaper">Wallpaper</button><button type="button" data-settings-nav="storage">Storage</button><button type="button" data-settings-nav="about">About</button></nav>
+      <nav class="settings-nav" aria-label="Settings sections"><button type="button" data-settings-nav="appearance">Appearance</button><button type="button" data-settings-nav="colors">Colors</button><button type="button" data-settings-nav="glass">Glass</button><button type="button" data-settings-nav="proxy">Proxy</button><button type="button" data-settings-nav="routing">Routing</button><button type="button" data-settings-nav="windows">Windows</button><button type="button" data-settings-nav="performance">Performance</button><button type="button" data-settings-nav="wallpaper">Wallpaper</button><button type="button" data-settings-nav="storage">Storage</button><button type="button" data-settings-nav="about">About</button></nav>
       <section id="settings-appearance" class="system-styling" aria-labelledby="styling-title">
         <div class="styling-intro"><div><span class="section-kicker">APPEARANCE / SYSTEM</span><h3 id="styling-title">System Styling</h3><p>Customize the visual treatment of the interface.</p></div><span class="material-tag"><span></span> GLASS MATERIAL</span></div>
         <div class="theme-grid" role="group" aria-label="Choose a color theme">
@@ -119,7 +119,7 @@
       </section>
       <label class="setting legacy-theme-setting">Theme<select id="theme" aria-label="Theme"><option value="mocha">Mocha</option><option value="obsidian">Obsidian</option><option value="ember">Ember</option><option value="charcoal">Charcoal</option><option value="ocean">Ocean</option><option value="forest">Forest</option><option value="rose">Rose</option><option value="contrast">High Contrast</option><option value="light">Light</option><option value="system">System</option></select></label>
       <details class="settings-group" open>
-        <summary id="settings-connection"><span>Connection &amp; routing</span><small>Scramjet, transport and site rules</small></summary>
+        <summary id="settings-connection"><span>Proxy connection</span><small>Engine and network transport</small></summary>
       <div class="setting engine-status"><span>Primary engine</span><strong id="engine-status">Scramjet</strong></div>
       <p class="connection-hint"><strong>Scramjet is the default.</strong> Choose Wisp below only if you have your own Wisp server. Wisp endpoints are saved in this browser and aren’t supplied to new users.</p>
       <label class="stack-setting">Scramjet frontend origin<input id="scramjet-origin" class="field" aria-label="Scramjet frontend origin" type="url" placeholder="https://your-scramjet-project.vercel.app" spellcheck="false"></label>
@@ -146,11 +146,14 @@
       <label class="setting"><span class="setting-title">Desktop wallpaper</span><select id="wallpaper" aria-label="Desktop wallpaper"><option value="rainy">Rainy glass</option><option value="slate">Blue hour</option><option value="dusk">Warm dusk</option></select></label>
       </details>
       <details class="settings-group">
-        <summary id="settings-tuning"><span>Appearance fine tuning</span><small>Custom colors, glass and density</small></summary>
+        <summary id="settings-colors"><span>Workspace colors</span><small>Customize individual interface colors</small></summary>
       <h3>Colors</h3>
       <div id="appearance-colors"></div>
       <button id="reset-colors" class="secondary-button">Reset colors to theme</button>
       <p class="muted">Choose a color or enter #RRGGBB. Choosing a theme applies its accent; custom background and frame colors stay until you reset colors. Page frame color does not change a website's own styling.</p>
+      </details>
+      <details class="settings-group">
+        <summary id="settings-glass"><span>Glass material</span><small>Transparency, blur and interface scale</small></summary>
       <label class="setting">Glass opacity<input id="glass-opacity" type="range" min="55" max="100" value="82"></label>
       <label class="setting">Blur<input id="glass-blur" type="range" min="0" max="40" value="18"></label>
       <label class="setting">Saturation<input id="glass-saturation" type="range" min="100" max="200" value="130"></label>

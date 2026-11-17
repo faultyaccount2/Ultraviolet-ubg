@@ -54,19 +54,20 @@ Scramjet/libcurl runtime connected to a loopback-only Wisp protocol fixture.
 The isolated test frontend uses port 4174; the fixture Wisp endpoint uses 4175.
 These fixtures are **not** production servers and must not be deployed.
 
-The desktop shows one app window at a time. Proxy and Proxy 2 each keep their
-own tabs, history and site storage while sharing appearance and connection
+The desktop fills the work area with one app window at a time. Proxy and Proxy 2
+each keep their own tabs, history and site storage while sharing appearance and connection
 preferences. Switch between them or Settings with the taskbar; the previous
 window stays loaded in the background so its state is preserved. The active
 window can be dragged, resized, minimized, maximized or closed. Clicking its
 taskbar icon minimizes or restores it. A translucent Start menu and taskbar
-provide app search, window switching and a local clock. The desktop
+provide centered app switching, search, a system tray and a local clock. The desktop
 glass sits over a locally rendered rain ambience that can be changed or turned
 off in Settings; it does not load remote wallpaper or tracking assets. Customize
 the desktop with ten palettes, a custom accent, per-surface colors, glass opacity,
 blur, saturation, corner radius, density, text size, three wallpaper treatments,
-and rain motion. Settings also groups proxy, window, performance and storage
-options with plain-English explanations.
+and rain motion. Settings has separate Appearance, Colors, Glass, Proxy, Routing,
+Windows, Performance, Wallpaper, Storage and About pages, with plain-English
+explanations beneath the controls.
 Open tabs restore on startup by default. Disable **Restore tabs on startup** to
 remove the saved tab session and opt out.
 DuckDuckGo is the default search engine; Google is also available in Settings.

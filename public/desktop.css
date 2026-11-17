@@ -51,3 +51,19 @@ body.desktop-body { position:relative; margin:0; color:#ececea; background:#1113
 .taskbar-app.selected .start-app-icon { border-color:#ffffff44; background:#ffffff11; }
 .taskbar-app.selected > i:last-child { width:14px; height:2px; background:var(--accent,#d1d3d3); }
 .taskbar-app:focus-visible { outline:1px solid var(--accent,#d1d3d3); outline-offset:1px; }
+
+/* Full desktop work area with a crisp window frame and a real full-width taskbar. */
+.desktop-window { border-radius:var(--desktop-radius,5px); }
+.window-titlebar { border-radius:var(--desktop-radius,5px) var(--desktop-radius,5px) 0 0; }
+.window-content { border-radius:0 0 var(--desktop-radius,5px) var(--desktop-radius,5px); }
+.taskbar { left:0; right:0; bottom:0; width:100%; max-width:none; min-height:50px; display:grid; grid-template-columns:1fr auto 1fr; gap:0; padding:4px 12px; border:0; border-top:1px solid #ffffff20; border-radius:0; transform:none; background:#191b1fcf; box-shadow:0 -6px 28px #0004,inset 0 1px #ffffff0b; }
+.taskbar-center { grid-column:2; display:flex; align-items:center; gap:6px; justify-self:center; }
+.taskbar-start { position:static; }
+.taskbar-search { position:static; width:150px; }
+.taskbar-apps { grid-column:auto; justify-self:center; gap:4px; }
+.taskbar-tray { grid-column:3; justify-self:end; min-height:35px; }
+@media (max-width:620px) {
+  .taskbar { min-height:48px; padding:4px 8px; }
+  .taskbar-search { display:none; }
+  .taskbar-tray { min-width:68px; padding-left:7px; }
+}
