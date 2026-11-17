@@ -175,6 +175,16 @@ body:not(.legal-layout)::before { content:""; position:fixed; inset:0; z-index:0
 .settings-group .setting-help { grid-column:1; color:var(--muted); font-size:10px; line-height:1.45; }.settings-group .setting.has-help { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:2px 12px; }.settings-group .setting.has-help > *:not(.setting-title):not(.setting-help) { grid-column:2; grid-row:1 / span 2; }.settings-group .setting-title { grid-column:1; color:var(--text); }
 .policy-links { display:flex; flex-wrap:wrap; gap:8px 18px; padding:12px 0; border-top:1px solid color-mix(in srgb,var(--text) 12%,transparent); border-bottom:1px solid color-mix(in srgb,var(--text) 12%,transparent); }.policy-links a { color:var(--accent); text-decoration:none; }.policy-links a:hover { text-decoration:underline; text-underline-offset:3px; }
 @media (max-width:650px) { .os-menubar { gap:8px; padding:0 9px; }.os-menus { gap:0; }.os-menus button { padding:5px; font-size:10px; }.os-system > span:nth-child(2) { display:none; }.browser { margin:5px 4px 48px; border-radius:10px; }.settings-nav { overflow-x:auto; }.settings-nav button { flex:0 0 auto; }.os-dock { bottom:4px; } }
+html[data-shell="embedded"] body:not(.legal-layout) { height:100%; min-height:0; display:block; overflow:hidden; background:transparent; }
+html[data-shell="embedded"] { height:100%; }
+html[data-shell="embedded"] .os-menubar,html[data-shell="embedded"] .os-dock,html[data-shell="embedded"] #rain-canvas { display:none!important; }
+html[data-shell="embedded"] .browser { height:100%; min-height:0; margin:0; border:0; border-radius:0; background:transparent; backdrop-filter:none; box-shadow:none; }
+html[data-shell="embedded"] .app-shelf { display:none; }
+html[data-shell="embedded"] .tab-bar,html[data-shell="embedded"] .toolbar,html[data-shell="embedded"] .quick-actions,html[data-shell="embedded"] .status-bar { background:color-mix(in srgb,var(--background) 78%,transparent); backdrop-filter:blur(24px) saturate(130%); }
+html[data-shell="embedded"] #settings-dialog:modal { position:fixed; inset:0; width:100%; height:100%; max-height:100%; margin:0; padding:18px; border:0; border-radius:0; box-shadow:none; overflow:auto; }
+html[data-shell="embedded"] #settings-dialog::backdrop { background:transparent; }
+html[data-app="settings"] .os-menubar,html[data-app="settings"] .os-dock,html[data-app="settings"] #rain-canvas,html[data-app="settings"] .browser { display:none!important; }
+html[data-app="settings"] #settings-dialog:modal { padding:18px; }
 
 :root[data-theme="obsidian"] { --background:#111214; --surface:#202226; --hover:#303338; --text:#f0f0ef; --muted:#a2a5a9; --accent:#c7c9ca; --frame:#111214; --toolbar:#17181b; --tabs:#1c1e21; --status:#1c1e21; --border:#ffffff18; }
 :root[data-theme="ember"] { --background:#171310; --surface:#27201c; --hover:#392c25; --text:#f3ece5; --muted:#b3a69a; --accent:#d29462; --frame:#171310; --toolbar:#1d1714; --tabs:#241d19; --status:#241d19; --border:#f8e8d018; }

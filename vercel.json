@@ -28,7 +28,7 @@
     { "source": "/transparency", "destination": "/legal.html" },
     {
       "source": "/",
-      "destination": "/index.html"
+      "destination": "/desktop.html"
     }
   ]
 }

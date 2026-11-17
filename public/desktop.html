@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-theme="mocha" data-wallpaper="rainy">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Bromine glass desktop with two independent proxy windows.">
+    <meta name="theme-color" content="#17191e">
+    <title>Bromine Desktop</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/app.css">
+    <link rel="stylesheet" href="/desktop.css">
+    <script src="/runtime-config.js"></script>
+    <script defer src="/desktop.js"></script>
+  </head>
+  <body class="desktop-body">
+    <div class="wallpaper-haze" aria-hidden="true"></div>
+    <canvas id="desktop-rain" aria-hidden="true"></canvas>
+    <header class="desktop-menubar" aria-label="Desktop menu bar">
+      <button class="desktop-brand" type="button" data-start-toggle aria-label="Open Start menu"><span class="brand-mark">Br</span><strong>Bromine</strong></button>
+      <nav class="desktop-menus" aria-label="Desktop commands">
+        <button type="button" data-start-toggle>Start</button>
+        <button type="button" data-open-window="proxy-1">Proxy</button>
+        <button type="button" data-open-window="proxy-2">Proxy 2</button>
+        <button type="button" data-open-window="settings">Settings</button>
+      </nav>
+      <div class="desktop-tray"><span class="tray-dot" title="Online"></span><span class="tray-label">Desktop</span><time id="desktop-clock"></time></div>
+    </header>
+    <main id="desktop-surface" class="desktop-surface" aria-label="Bromine desktop">
+      <section class="desktop-window active" id="window-proxy-1" data-window="proxy-1" aria-label="Proxy window">
+        <header class="window-titlebar" data-drag-handle>
+          <span class="window-app-icon proxy-icon">P</span><span class="window-title">Proxy</span>
+          <div class="window-controls"><button type="button" data-window-action="minimize" aria-label="Minimize Proxy" title="Minimize"><i class="minimize-glyph"></i></button><button type="button" data-window-action="maximize" aria-label="Maximize Proxy" title="Maximize or restore"><i class="maximize-glyph"></i></button><button type="button" class="close-control" data-window-action="close" aria-label="Close Proxy" title="Close">×</button></div>
+        </header>
+        <div class="window-content"><iframe class="proxy-frame" src="/index.html?embedded=1&amp;instance=proxy-1" title="Proxy browser"></iframe></div>
+        <div class="resize-handle n" data-resize="n"></div><div class="resize-handle e" data-resize="e"></div><div class="resize-handle s" data-resize="s"></div><div class="resize-handle w" data-resize="w"></div><div class="resize-handle ne" data-resize="ne"></div><div class="resize-handle nw" data-resize="nw"></div><div class="resize-handle se" data-resize="se"></div><div class="resize-handle sw" data-resize="sw"></div>
+      </section>
+      <section class="desktop-window" id="window-proxy-2" data-window="proxy-2" aria-label="Proxy 2 window">
+        <header class="window-titlebar" data-drag-handle>
+          <span class="window-app-icon proxy-two-icon"><i></i><i></i><i></i></span><span class="window-title">Proxy 2</span>
+          <div class="window-controls"><button type="button" data-window-action="minimize" aria-label="Minimize Proxy 2" title="Minimize"><i class="minimize-glyph"></i></button><button type="button" data-window-action="maximize" aria-label="Maximize Proxy 2" title="Maximize or restore"><i class="maximize-glyph"></i></button><button type="button" class="close-control" data-window-action="close" aria-label="Close Proxy 2" title="Close">×</button></div>
+        </header>
+        <div class="window-content"><iframe class="proxy-frame" src="/index.html?embedded=1&amp;instance=proxy-2" title="Proxy 2 browser"></iframe></div>
+        <div class="resize-handle n" data-resize="n"></div><div class="resize-handle e" data-resize="e"></div><div class="resize-handle s" data-resize="s"></div><div class="resize-handle w" data-resize="w"></div><div class="resize-handle ne" data-resize="ne"></div><div class="resize-handle nw" data-resize="nw"></div><div class="resize-handle se" data-resize="se"></div><div class="resize-handle sw" data-resize="sw"></div>
+      </section>
+      <section class="desktop-window settings-window" id="window-settings" data-window="settings" aria-label="System Settings window" hidden>
+        <header class="window-titlebar" data-drag-handle>
+          <span class="window-app-icon settings-icon" aria-hidden="true"><svg><use href="/icons.svg#settings"></use></svg></span><span class="window-title">System Settings</span>
+          <div class="window-controls"><button type="button" data-window-action="minimize" aria-label="Minimize Settings" title="Minimize"><i class="minimize-glyph"></i></button><button type="button" data-window-action="maximize" aria-label="Maximize Settings" title="Maximize or restore"><i class="maximize-glyph"></i></button><button type="button" class="close-control" data-window-action="close" aria-label="Close Settings" title="Close">×</button></div>
+        </header>
+        <div class="window-content"><iframe class="settings-frame" src="/index.html?embedded=1&amp;instance=desktop-settings&amp;app=settings" title="System Settings"></iframe></div>
+        <div class="resize-handle n" data-resize="n"></div><div class="resize-handle e" data-resize="e"></div><div class="resize-handle s" data-resize="s"></div><div class="resize-handle w" data-resize="w"></div><div class="resize-handle ne" data-resize="ne"></div><div class="resize-handle nw" data-resize="nw"></div><div class="resize-handle se" data-resize="se"></div><div class="resize-handle sw" data-resize="sw"></div>
+      </section>
+    </main>
+    <aside class="start-menu" id="start-menu" aria-label="Start menu" hidden>
+      <label class="start-search"><svg aria-hidden="true"><use href="/icons.svg#search"></use></svg><input id="start-search-input" type="search" placeholder="Search apps" aria-label="Search applications"></label>
+      <div class="start-menu-heading"><strong>Pinned</strong><span>Workspace</span></div>
+      <div class="pinned-apps">
+        <button type="button" data-open-window="proxy-1" data-app-label="Proxy"><span class="start-app-icon proxy-icon">P</span><span>Proxy</span></button>
+        <button type="button" data-open-window="proxy-2" data-app-label="Proxy 2"><span class="start-app-icon proxy-two-icon"><i></i><i></i><i></i></span><span>Proxy 2</span></button>
+        <button type="button" data-open-window="settings" data-app-label="Settings"><span class="start-app-icon settings-icon"><svg><use href="/icons.svg#settings"></use></svg></span><span>Settings</span></button>
+      </div>
+      <div class="start-menu-heading recent-heading"><strong>Recently opened</strong><span>3 apps</span></div>
+      <div class="recent-apps"><button type="button" data-open-window="proxy-1">Proxy <small>Browsing window</small></button><button type="button" data-open-window="proxy-2">Proxy 2 <small>Browsing window</small></button><button type="button" data-open-window="settings">Settings <small>System</small></button></div>
+      <footer class="start-footer"><span>Local desktop session</span><button type="button" data-start-toggle aria-label="Close Start menu">Close</button></footer>
+    </aside>
+    <footer class="taskbar" aria-label="Taskbar">
+      <button class="taskbar-start" type="button" data-start-toggle aria-label="Start"><span class="brand-mark">Br</span></button>
+      <label class="taskbar-search"><svg aria-hidden="true"><use href="/icons.svg#search"></use></svg><input id="taskbar-search-input" type="search" placeholder="Search" aria-label="Search apps or browse"></label>
+      <div class="taskbar-apps" aria-label="Running applications">
+        <button type="button" class="taskbar-app selected" data-taskbar-window="proxy-1" data-open-window="proxy-1" aria-label="Proxy"><span class="start-app-icon proxy-icon">P</span><i></i></button>
+        <button type="button" class="taskbar-app" data-taskbar-window="proxy-2" data-open-window="proxy-2" aria-label="Proxy 2"><span class="start-app-icon proxy-two-icon"><i></i><i></i><i></i></span><i></i></button>
+        <button type="button" class="taskbar-app" data-taskbar-window="settings" data-open-window="settings" aria-label="Settings"><span class="start-app-icon settings-icon"><svg><use href="/icons.svg#settings"></use></svg></span><i></i></button>
+      </div>
+      <div class="taskbar-tray"><span class="tray-network" aria-label="Network connected"></span><span class="tray-volume" aria-label="Audio"></span><time id="taskbar-clock"></time></div>
+    </footer>
+    <div id="desktop-notice" class="desktop-notice" role="status" hidden></div>
+  </body>
+</html>

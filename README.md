@@ -5,12 +5,13 @@
 ![Transports](https://img.shields.io/badge/transports-Bare%20%7C%20Wisp-536d78?style=flat-square)
 ![Licenses](https://img.shields.io/badge/licenses-multiple-68727e?style=flat-square)
 
-Bromine is an experimental, self-hostable browsing workspace with a glass OS
-shell. Scramjet is the standard proxy engine. Website traffic uses either the
-public Bare HTTP endpoint or a Wisp server that each user configures in their
-own browser profile. A separate Scramjet app is available at
-[scramjet-ubg.vercel.app](https://scramjet-ubg.vercel.app/); the Bromine UI is
-[ultraviolet-ubg.vercel.app](https://ultraviolet-ubg.vercel.app/).
+Bromine is an experimental, self-hostable browsing desktop with two independent
+proxy windows, a floating taskbar and a movable Settings app. Scramjet is the
+standard proxy engine. Website traffic uses either the public Bare HTTP endpoint
+or a Wisp server that each user configures in their own browser profile. The
+separate Scramjet frontend is at
+[scramjet-ubg.vercel.app](https://scramjet-ubg.vercel.app/); the Bromine desktop
+is at [ultraviolet-ubg.vercel.app](https://ultraviolet-ubg.vercel.app/).
 
 This is a browser proxy, not a VPN or a general purpose anonymity service.
 Websites can block proxy traffic, require first-party verification, or fail for
@@ -54,12 +55,15 @@ Scramjet/libcurl runtime connected to a loopback-only Wisp protocol fixture.
 The isolated test frontend uses port 4174; the fixture Wisp endpoint uses 4175.
 These fixtures are **not** production servers and must not be deployed.
 
-The workspace includes independent draggable/pinnable tabs, navigation,
-search, bookmarks, history, downloads, request inspection, quick actions and
-fullscreen. An OS style menu bar and application dock provide shortcuts to
-Bromine, Scramjet and system settings. The desktop glass sits over a locally
-rendered rain ambience that can be turned off in Settings; it does not load
-remote wallpaper or tracking assets.
+The desktop starts with two side-by-side proxy windows. Each can be dragged,
+resized, minimized, maximized, closed and restored from the taskbar. Each
+window has independent tabs, history and site storage while sharing the chosen
+appearance and connection preferences. The windows run the same browser app
+and stay in the desktop; the standalone Scramjet frontend remains separately
+available. Settings opens as another movable window. A translucent Start menu
+and taskbar provide app search, window switching and a local clock. The desktop
+glass sits over a locally rendered rain ambience that can be changed or turned
+off in Settings; it does not load remote wallpaper or tracking assets.
 Open tabs restore on startup by default. Disable **Restore tabs on startup** to
 remove the saved tab session and opt out.
 DuckDuckGo is the default search engine; Google is also available in Settings.

@@ -6,6 +6,7 @@
     <meta name="description" content="Bromine — a lightweight HTTP(S) web browser with tabs, history and themes.">
     <meta name="theme-color" content="#1e1e2e">
     <title>bromine</title>
+    <script>const desktopParams=new URLSearchParams(location.search);if(desktopParams.get("embedded")==="1")document.documentElement.dataset.shell="embedded";if(desktopParams.get("app")==="settings")document.documentElement.dataset.app="settings";</script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="alternate icon" href="/favicon.ico">
     <link rel="stylesheet" href="/app.css">
@@ -98,7 +99,7 @@
     </template>
     <dialog id="settings-dialog">
       <div class="dialog-heading"><h2>Settings</h2><button class="icon-button" data-close aria-label="Close settings"><svg><use href="/icons.svg#close"></use></svg></button></div>
-      <nav class="settings-nav" aria-label="Settings sections"><button type="button" data-settings-nav="appearance">Appearance</button><button type="button" data-settings-nav="connection">Connection</button><button type="button" data-settings-nav="interface">Interface</button><button type="button" data-settings-nav="privacy">Privacy</button><button type="button" data-settings-nav="storage">Storage</button></nav>
+      <nav class="settings-nav" aria-label="Settings sections"><button type="button" data-settings-nav="appearance">Appearance</button><button type="button" data-settings-nav="proxy">Proxy</button><button type="button" data-settings-nav="windows">Windows</button><button type="button" data-settings-nav="performance">Performance</button><button type="button" data-settings-nav="wallpaper">Wallpaper</button><button type="button" data-settings-nav="storage">Storage</button><button type="button" data-settings-nav="about">About</button></nav>
       <section id="settings-appearance" class="system-styling" aria-labelledby="styling-title">
         <div class="styling-intro"><div><span class="section-kicker">APPEARANCE / SYSTEM</span><h3 id="styling-title">System Styling</h3><p>Customize the visual treatment of the interface.</p></div><span class="material-tag"><span></span> GLASS MATERIAL</span></div>
         <div class="theme-grid" role="group" aria-label="Choose a color theme">
@@ -132,7 +133,7 @@
       <p class="muted">Pages stay embedded unless you choose Open directly. Scramjet is the default proxy engine. Direct frames can be denied by a site's framing policy; their failures and navigation cannot be reliably inspected. Authentication, TLS and rate-limit failures are not bypassed.</p>
       </details>
       <details class="settings-group">
-        <summary id="settings-interface"><span>Browser interface</span><small>Startup, toolbar and search</small></summary>
+        <summary id="settings-interface"><span>Windows &amp; browser</span><small>Startup, window behavior, toolbar and search</small></summary>
       <label class="setting">Tab title<input id="cloak-title" class="field narrow" aria-label="Tab title" placeholder="bromine" maxlength="160"></label>
       <label class="setting">Tab favicon<select id="cloak-icon" aria-label="Tab favicon"><option value="bromine">Bromine</option><option value="neutral">Neutral</option></select></label>
       <p class="muted">The about:blank wrapper and appearance settings only change this app's browser-tab presentation. They do not hide traffic, browser history or activity from network operators.</p>
@@ -142,6 +143,7 @@
       <label class="setting">Show status bar<input id="show-status" type="checkbox"></label>
       <label class="setting">Rain window ambience<input id="rain-effect" type="checkbox"></label>
       <label class="setting">Search engine<select id="search-engine" aria-label="Search engine"><option value="duckduckgo">DuckDuckGo</option><option value="google">Google</option></select></label>
+      <label class="setting"><span class="setting-title">Desktop wallpaper</span><select id="wallpaper" aria-label="Desktop wallpaper"><option value="rainy">Rainy glass</option><option value="slate">Blue hour</option><option value="dusk">Warm dusk</option></select></label>
       </details>
       <details class="settings-group">
         <summary id="settings-tuning"><span>Appearance fine tuning</span><small>Custom colors, glass and density</small></summary>

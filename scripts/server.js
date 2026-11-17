@@ -4,7 +4,7 @@ import { resolve, extname, sep } from "node:path";
 
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".json": "application/json", ".png": "image/png", ".wasm": "application/wasm" };
 
-export function startServer(proxy, port = 3000, directory = "public") {
+export function startServer(proxy, port = 3000, directory = "public", homepage = "index.html") {
   const root = resolve(directory);
   const server = createServer(async (req, res) => {
     try {
@@ -12,7 +12,7 @@ export function startServer(proxy, port = 3000, directory = "public") {
       if (pathname === "/api/proxy") return await proxy(req, res);
       if (!["GET", "HEAD"].includes(req.method)) { res.statusCode = 405; return res.end("Method not allowed"); }
       const legal = ["/terms", "/privacy", "/legal", "/copyright", "/dmca", "/acceptable-use", "/abuse", "/contact", "/transparency"].includes(pathname);
-      const file = resolve(root, "." + decodeURIComponent(pathname === "/" ? "/index.html" : legal ? "/legal.html" : pathname));
+      const file = resolve(root, "." + decodeURIComponent(pathname === "/" ? `/${homepage}` : legal ? "/legal.html" : pathname));
       if (!file.startsWith(root + sep)) { res.statusCode = 403; return res.end("Forbidden"); }
       let body;
       try { body = await readFile(file); }

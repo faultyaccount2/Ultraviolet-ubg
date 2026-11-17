@@ -11,6 +11,16 @@ import { connectScramjet, scramjetConfig, scramjetControl, scramjetDownload } fr
 import { validateScramjetOrigin, validateBareUrl, validateWispUrl } from "../scramjet-host/config.js";
 
 const $ = (selector) => document.querySelector(selector);
+const pageParams = new URLSearchParams(location.search);
+const instanceId = pageParams.get("instance") || "";
+const appMode = pageParams.get("app") || "";
+if (pageParams.get("embedded") === "1") document.documentElement.dataset.shell = "embedded";
+if (appMode === "settings") document.documentElement.dataset.app = "settings";
+const sharedStoreKeys = new Set(["bromine:settings", "bromine:cache-versions", "bromine:restore-migrated"]);
+function storeKey(name) {
+  if (!instanceId || instanceId === "proxy-1" || sharedStoreKeys.has(name)) return name;
+  return `${name}:instance:${instanceId}`;
+}
 const tabs = [];
 let selected;
 let noticeTimer;
@@ -29,7 +39,7 @@ function notice(message) {
 
 function readStore(name, fallback, valid) {
   try {
-    const raw = localStorage.getItem(name);
+    const raw = localStorage.getItem(storeKey(name));
     if (raw === null) return fallback;
     const value = JSON.parse(raw);
     if (!valid(value)) throw new Error("Invalid saved data");
@@ -42,12 +52,17 @@ function readStore(name, fallback, valid) {
 
 function writeStore(name, value) {
   try {
-    localStorage.setItem(name, JSON.stringify(value));
+    localStorage.setItem(storeKey(name), JSON.stringify(value));
     return true;
   } catch {
     notice("Browser storage is unavailable. Changes will not persist.");
     return false;
   }
+}
+
+function removeStore(name) {
+  try { localStorage.removeItem(storeKey(name)); return true; }
+  catch { notice("Browser storage is unavailable. Saved data could not be removed."); return false; }
 }
 
 const themes = ["mocha", "obsidian", "ember", "charcoal", "ocean", "forest", "rose", "contrast", "light", "system"];
@@ -63,7 +78,7 @@ const colorLabels = {
 const hexColor = /^#[a-f\d]{6}$/i;
 const defaults = {
   theme: "mocha", engine: "duckduckgo", adblock: true, mode: "proxy",
-  proxyEngine: "scramjet", scramjetOrigin: "", wispUrl: "", bareUrl: "", transport: "bare", rain: true,
+  proxyEngine: "scramjet", scramjetOrigin: "", wispUrl: "", bareUrl: "", transport: "bare", rain: true, wallpaper: "rainy",
   proxyDomains: [], restore: true, homepage: "", bookmarksBar: false, statusBar: true,
   accent: "", colors: {}, opacity: 82, blur: 18, saturation: 130, radius: 8, density: "normal",
   textSize: 14, logging: true, cacheEnabled: true, cacheLimit: 256, concurrent: 2, cloakTitle: "", cloakIcon: "bromine",
@@ -73,6 +88,7 @@ const settings = { ...defaults, ...readStore("bromine:settings", defaults,
     (value.mode === undefined || ["automatic", "direct", "proxy"].includes(value.mode)) &&
     (value.proxyEngine === undefined || ["scramjet", "classic"].includes(value.proxyEngine)) &&
     (value.rain === undefined || typeof value.rain === "boolean") &&
+    (value.wallpaper === undefined || ["rainy", "slate", "dusk"].includes(value.wallpaper)) &&
     ["scramjetOrigin", "wispUrl", "bareUrl"].every((key) => value[key] === undefined || typeof value[key] === "string") &&
     (value.transport === undefined || ["", "bare", "wisp"].includes(value.transport)) &&
     (value.restore === undefined || typeof value.restore === "boolean") &&
@@ -138,12 +154,19 @@ function applyAppearance() {
   }
   document.documentElement.dataset.density = settings.density;
   document.documentElement.dataset.rain = settings.rain === false ? "off" : "on";
+  document.documentElement.dataset.wallpaper = settings.wallpaper || "rainy";
   $("#bookmarks-bar").hidden = !settings.bookmarksBar;
   $(".status-bar").hidden = !settings.statusBar;
   const favicon = settings.cloakIcon === "neutral" ? "/favicon-neutral.svg" : "/favicon.svg";
   $('link[rel="icon"]').href = favicon;
   if (settings.cloakTitle) document.title = settings.cloakTitle;
   if (parent !== window) parent.postMessage({ type: "bromine:appearance", title: settings.cloakTitle || document.title, favicon: new URL(favicon, location.href).href }, "*");
+  if (appMode === "settings" && parent !== window) parent.postMessage({
+    type: "bromine:desktop-appearance", appearance: {
+      theme: settings.theme, accent: settings.accent, colors: settings.colors, opacity: settings.opacity,
+      blur: settings.blur, saturation: settings.saturation, wallpaper: settings.wallpaper, rain: settings.rain,
+    },
+  }, location.origin);
   refreshColorInputs();
 }
 function refreshColorInputs() {
@@ -253,10 +276,11 @@ function updateClock() {
 updateClock();
 setInterval(updateClock, 30_000);
 const settingNavTargets = {
-  appearance: "#settings-appearance", connection: "#settings-connection", interface: "#settings-interface",
-  privacy: "#settings-privacy", storage: "#settings-storage",
+  appearance: "#settings-appearance", proxy: "#settings-connection", windows: "#settings-interface",
+  performance: "#settings-privacy", wallpaper: "#wallpaper-setting", storage: "#settings-storage",
 };
 document.querySelectorAll("[data-settings-nav]").forEach((button) => button.addEventListener("click", () => {
+  if (button.dataset.settingsNav === "about") { $("#about-dialog").showModal(); return; }
   const target = $(settingNavTargets[button.dataset.settingsNav]);
   target?.closest("details") && (target.closest("details").open = true);
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -278,6 +302,7 @@ const settingExplanations = {
   "show-bookmarks": "Keep saved links visible below the address bar.",
   "show-status": "Show loading messages and the privacy link at the bottom of the window.",
   "rain-effect": "Animate fine rain on the desktop glass. Turn it off to save a little battery.",
+  wallpaper: "Choose the quiet colors behind the glass. The wallpaper is drawn locally and never loads remote images.",
   "search-engine": "Choose which search provider receives searches from the address bar.",
   "glass-opacity": "Set how much of the desktop wallpaper shows through the interface.",
   "glass-blur": "Control how strongly the wallpaper softens behind glass surfaces.",
@@ -865,6 +890,9 @@ document.querySelectorAll("[data-action]").forEach((button) => {
   button.addEventListener("click", () => actions[button.dataset.action]());
 });
 document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
+$("#settings-dialog").addEventListener("close", () => {
+  if (appMode === "settings" && parent !== window) parent.postMessage({ type: "bromine:settings-close" }, location.origin);
+});
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".menu-container")) {
     $("#menu").hidden = true;
@@ -880,6 +908,24 @@ $("#theme").addEventListener("change", (event) => {
   settings.accent = "";
   applyAppearance();
   writeStore("bromine:settings", settings);
+});
+window.addEventListener("storage", (event) => {
+  if (event.key !== "bromine:settings" || !event.newValue) return;
+  try {
+    const next = JSON.parse(event.newValue);
+    if (!next || !themes.includes(next.theme) || !["scramjet", "classic"].includes(next.proxyEngine)) return;
+    Object.assign(settings, next);
+    $("#theme").value = settings.theme;
+    for (const [id, key] of [["scramjet-transport", "transport"], ["proxy-engine", "proxyEngine"], ["wallpaper", "wallpaper"]]) {
+      const control = $(`#${id}`);
+      if (control) control.value = settings[key];
+    }
+    for (const [id, key] of [["rain-effect", "rain"], ["adblock", "adblock"], ["restore-tabs", "restore"], ["show-bookmarks", "bookmarksBar"], ["show-status", "statusBar"]]) {
+      const control = $(`#${id}`);
+      if (control) control.checked = Boolean(settings[key]);
+    }
+    applyAppearance();
+  } catch { notice("A settings update from another proxy window could not be read."); }
 });
 document.querySelectorAll("[data-theme-choice]").forEach((choice) => choice.addEventListener("click", () => {
   settings.theme = choice.dataset.themeChoice;
@@ -898,7 +944,7 @@ $("#reset-theme").addEventListener("click", () => {
 });
 for (const [id, key, kind] of [
   ["routing-mode", "mode", "string"], ["restore-tabs", "restore", "boolean"], ["show-bookmarks", "bookmarksBar", "boolean"],
-  ["show-status", "statusBar", "boolean"], ["rain-effect", "rain", "boolean"], ["glass-opacity", "opacity", "number"],
+  ["show-status", "statusBar", "boolean"], ["rain-effect", "rain", "boolean"], ["wallpaper", "wallpaper", "string"], ["glass-opacity", "opacity", "number"],
   ["glass-blur", "blur", "number"], ["glass-saturation", "saturation", "number"], ["glass-radius", "radius", "number"],
   ["density", "density", "string"], ["text-size", "textSize", "number"], ["request-logging", "logging", "boolean"],
   ["cloak-title", "cloakTitle", "string"], ["cloak-icon", "cloakIcon", "string"],
@@ -910,8 +956,7 @@ for (const [id, key, kind] of [
     settings[key] = kind === "boolean" ? input.checked : kind === "number" ? Number(input.value) : input.value;
     applyAppearance(); writeStore("bromine:settings", settings);
     if (key === "restore" && !settings.restore) {
-      try { localStorage.removeItem("bromine:session"); }
-      catch { notice("Saved tabs could not be removed from browser storage."); }
+      removeStore("bromine:session");
     }
     saveSession();
     if (key === "logging" && !settings.logging) tabs.forEach((tab) => { tab.requests = []; });
@@ -990,8 +1035,7 @@ $("#clear-site-storage").addEventListener("click", async () => {
     } catch (error) { notice(error.message); }
     return;
   }
-  try { localStorage.removeItem(storageSeedPrefix + origin); }
-  catch { notice("Site storage could not be cleared because browser storage is unavailable."); return; }
+  if (!removeStore(storageSeedPrefix + origin)) return;
   for (const tab of tabs) {
     tab.siteSessions?.delete(origin);
     if (tab.storageOrigin === origin && tab.route?.mode === "proxy") renderPage(tab);
@@ -1017,6 +1061,12 @@ document.addEventListener("keydown", (event) => {
   const shortcuts = { t: actions["new-tab"], w: () => closeTab(current()), l: () => $("#address").focus(), r: actions.reload, ArrowLeft: actions.back, ArrowRight: actions.forward };
   const action = shortcuts[event.key.length === 1 ? event.key.toLowerCase() : event.key];
   if (action) { event.preventDefault(); action(); }
+});
+window.addEventListener("message", (event) => {
+  if (event.source === window.parent && event.origin === location.origin && event.data?.type === "bromine:desktop-navigate" && typeof event.data.url === "string") {
+    navigate(event.data.url);
+    return;
+  }
 });
 window.addEventListener("message", (event) => {
   const tab = tabs.find((item) => item.frame?.contentWindow === event.source);
@@ -1330,4 +1380,5 @@ if (session?.tabs.length) {
   }
   selectTab(tabs[Math.max(0, Math.min(session.selected || 0, tabs.length - 1))]);
 } else createTab();
+if (appMode === "settings") requestAnimationFrame(() => $("#settings-dialog").showModal());
 window.bromineCompatibility = compatibility;
